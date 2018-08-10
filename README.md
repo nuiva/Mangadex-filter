@@ -8,7 +8,7 @@ Get Violentmonkey or Greasemonkey browser extension from Google. Then click [her
 
 ## Usage
 
-Go to Mangadex [search page](https://mangadex.org/search) to set the tag filters. The toggles are shown next to the included/excluded genres.
+Go to Mangadex [search page](https://mangadex.org/search) to set the tag filters. The toggles are shown next to the included/excluded genres, and you must click the text *Filter* and not the checkbox. Green means not filtered, red means filtered.
 Note that there is a 600 requests/10min limit on some Mangadex pages, and this script requests every manga that you have seen **for the first time**. Hence, refreshing all recent updates pages right after installation is not recommended, though no bans have been received yet.
 
 For manual filtering, there are "Filter" buttons near the series name at the frontpage and updates page. You can unfilter series at their specific page.
