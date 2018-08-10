@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 1
+// @version 2
 // @match *://mangadex.org/
 // @match *://mangadex.org/updates*
 // @match *://mangadex.org/manga/*
@@ -48,7 +48,7 @@ function main_manga() {
     $a.text(isfiltered(title) ? "Unfilter" : "Filter");
   }
   style();
-  $a.click(()=>{isfiltered(title) ? unfilter(title) : filter(title);style()});
+  $a.click(()=>{save(title, "f", !isfiltered(title));style()});
   $a.appendTo($h);
 }
 
@@ -237,7 +237,7 @@ function filter_query(s,$controldiv){
       $p.append("<br>" + best_match);
       $p.css("background-color", "#aa0");
       $p.click(function(){
-        isfiltered(best_match) ? unfilter(best_match) : filter(best_match);
+        save(best_match, "f", !isfiltered(best_match));
         $p.css("background-color", isfiltered(best_match) ? "#0a0" : "#aa0");
       });
     }
