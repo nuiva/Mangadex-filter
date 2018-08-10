@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 3
+// @version 5
 // @match *://mangadex.org/
 // @match *://mangadex.org/search
 // @match *://mangadex.org/updates*
@@ -28,6 +28,9 @@ if (window.location.pathname === "/") {
 function main_frontpage() {
   $("#latest_update div.col-md-6").each(frontpage_processmanga);
   //$("div.tab-pane li").each(frontpage_processmanga);
+  button = $("<button>Mangadex filter</button>");
+  button.click(controlpanel);
+  button.appendTo("nav.navbar");
 }
 function frontpage_processmanga() {
   var $this = $(this);
@@ -138,8 +141,15 @@ function xhr_tagfilter(mid, $hide) {
       if (anytagfiltered(json.manga.genres)) {
         $hide.hide();
       }
-    });
+    }, 200);
   }
+}
+function xhr_get(mid, callback) {
+  throttled_get(midtoapihref(mid),function(data){
+    save(mid, "tags", data.manga.genres);
+    save(mid, "tagschecked", time());
+    callback(data);
+  });
 }
 
 // Clear all entries in cache
@@ -184,11 +194,11 @@ function time() {
 }
 // Note: Mangadex bans on 600 requests / 600 seconds.
 // A delay of 1100ms leaves 55 requests to the user per 10min.
-function throttled_get_delay() {
+function throttled_get_delay(incr = 1100) {
   if (typeof throttled_get_delay.lastgettime === "undefined") {
     throttled_get_delay.lastgettime = 0;
   }
-  throttled_get_delay.lastgettime += 200;
+  throttled_get_delay.lastgettime += incr;
   var now = new Date().getTime();
   var delay = throttled_get_delay.lastgettime - now;
   if (delay < 0) {
@@ -295,45 +305,51 @@ function anytagfiltered(tags) {
   return intersection(tags,filtered).length > 0;
 }
 
-function filter_query(s,$controldiv){
-  if (!s || isfiltered(s)) return;
-  throttled_get("/quick_search/" + s, function(html){
-    var best_match = "";
-    var best_distance = -1;
-    var re = new RegExp("manga_title[^\"]*\">([^<]*)", "g");
-    var match;
-    while ((match = re.exec(html))) {
-      var title = match[1];
-      var distance = Levenshtein.get(s, title);
-      if (best_distance < 0 || distance < best_distance) {
-        best_match = title;
-        best_distance = distance;
-      }
-    }
-    if (isfiltered(best_match)) return;
-    if (best_distance == 0) {
-      filter(s);
-      return;
-    }
-    var $p = $("<p/>", {text: s, style: "color:#000;border:1px solid black;margin:0"});
-    $p.css("background-color","#a00");
-    if (best_distance > 0) {
-      $p.append("<br>" + best_match);
-      $p.css("background-color", "#aa0");
-      $p.click(function(){
-        save(best_match, "f", !isfiltered(best_match));
-        $p.css("background-color", isfiltered(best_match) ? "#0a0" : "#aa0");
-      });
-    }
-    $p.appendTo($controldiv);
-  });
+
+function controlpanel(){
+  if (typeof controlpanel.div === "undefined") {
+    controlpanel.div = $("<div/>", {style: "position:fixed;top:0;left:0;width:100%;height:100%;z-index:10000;background-color:#fff;color:#000"});
+    controlpanel.div.appendTo("body");
+    var controldiv = $("<div/>", {style: "border: 2px solid black;height:30px;overflow:auto"})
+    controldiv.appendTo(controlpanel.div);
+    var datatable = $("<table/>", {style: "display: block; overflow: auto; white-space: nowrap; position:absolute;bottom:0;left:0;top:30px;width:100%;background-color:#fff"});
+    datatable.appendTo(controlpanel.div);
+    $("<button>List cache</button>").click(()=>controlpanel_listcache(datatable, false)).appendTo(controldiv);
+    $("<button>Update cache</button>").click(()=>controlpanel_listcache(datatable, true)).appendTo(controldiv);
+    $("<button>Close</button>").click(()=>controlpanel.div.hide()).appendTo(controldiv);
+  }
+  controlpanel.div.show();
+  return controlpanel.div;
 }
-filter_list = function(s){
-  var $controldiv = $("<div/>", {style: "position:fixed;top:0;left:0;width:100%;height:100%;z-index:10000;background-color:#fff;overflow:scroll"});
-  $controldiv.appendTo($("body"));
-  var strings = s.split(/\r?\n/);
-  var delay = 0;
-  strings.forEach(function(s){
-    filter_query(s, $controldiv);
+
+function controlpanel_listcache($table, update_xhr) {
+  $table.find("tr").remove();
+  GM_listValues().forEach(function(k){
+    var $tr = $("<tr/>").appendTo($table);
+    $("<td/>", {text: k}).appendTo($tr);
+    if (k !== "__OPTIONS") {
+      $tr.css("background-color", isfiltered(k) ? "#a00" : "#0a0");
+      var $name = $("<td/>").appendTo($tr);
+      var $cache = $("<td/>").appendTo($tr);
+      var $extra = $("<td/>").appendTo($tr);
+      function update() {
+        $tr.css("background-color", isfiltered(k) ? "#a00" : (anytagfiltered(load(k, "tags")) ? "#aa0" : "#0a0"));
+        $cache.text(GM_getValue(k));
+      }
+      update();
+      if (update_xhr) {
+        xhr_get(k, function(data){
+          $name.text(data.manga.title);
+          $extra.text(JSON.stringify(data.manga));
+          update();
+        })
+      }
+      $tr.click(function(){
+        save(k, "f", !isfiltered(k));
+        update();
+      })
+    } else {
+      $("<td/>", {text: GM_getValue(k)}).appendTo($tr);
+    }
   });
 }
