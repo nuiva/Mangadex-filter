@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 6
+// @version 7
 // @match *://mangadex.org/
 // @match *://mangadex.org/search
 // @match *://mangadex.org/updates*
@@ -324,9 +324,9 @@ function controlpanel(){
 function controlpanel_listcache($table, update_xhr) {
   $table.find("tr").remove();
   GM_listValues().forEach(function(k){
-    var $tr = $("<tr/>").appendTo($table);
-    $("<td/>", {text: k}).appendTo($tr);
+    var $tr = $("<tr/>", {style: "border-bottom:1px solid black"}).appendTo($table);
     if (k !== "__OPTIONS") {
+      $("<td/>").appendTo($tr).append($("<a/>", {text: k, href: midtohref(k), style: "color: #00c"}));
       var $name = $("<td/>").appendTo($tr);
       var $cache = $("<td/>").appendTo($tr);
       var $extra = $("<td/>").appendTo($tr);
@@ -349,6 +349,7 @@ function controlpanel_listcache($table, update_xhr) {
         update();
       })
     } else {
+      $("<td/>", {text: k}).appendTo($tr);
       $("<td/>", {text: GM_getValue(k)}).appendTo($tr);
     }
   });
