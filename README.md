@@ -2,6 +2,10 @@
 
 Filters yaoi-tagged and user-specified series at Mangadex frontpage and recent updates listing.
 
+## Installation
+
+Get Violentmonkey or Greasemonkey browser extension from Google. Then click [here](https://github.com/nuiva/Mangadex-filter/raw/master/Mangadex-filter.user.js) to install.
+
 ## Usage
 
 The yaoi-filter is automatic, but is capped at 1 check every 1.1 seconds to avoid autoban. It seems slow at first, but after you have seen the series once it's cached and faster.
