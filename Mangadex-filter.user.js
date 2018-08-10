@@ -1,8 +1,9 @@
 // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 2
+// @version 3
 // @match *://mangadex.org/
+// @match *://mangadex.org/search
 // @match *://mangadex.org/updates*
 // @match *://mangadex.org/manga/*
 // @require      https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js
@@ -18,6 +19,8 @@ if (window.location.pathname === "/") {
   main_frontpage();
 } else if (window.location.pathname.match("/updates")) {
   main_updates();
+} else if (window.location.pathname === "/search") {
+  main_search();
 } else {
   main_manga();
 }
@@ -34,13 +37,16 @@ function frontpage_processmanga() {
     $this.hide();
     return;
   }
-  get_filterifyaoi(title, $a.attr("href"), $this);
+  xhr_tagfilter(title, $a.attr("href"), $this);
   filterbutton(title, $this, $this, "position:absolute;right:0;bottom:0");
 }
 
 function main_manga() {
   var $h = $("h6.card-header");
   var title = textcontent($h).trim();
+  if (gettags(title)) {
+    $("<a/>", {text: "Filtered by tags.", style: "background-color:#a00;margin-left:30px"}).appendTo($h);
+  }
   var $a = $("<a/>", {style: "margin-left:30px"});
   function style(){
     $h.css("background-color", isfiltered(title) ? "#a00": "");
@@ -50,6 +56,22 @@ function main_manga() {
   style();
   $a.click(()=>{save(title, "f", !isfiltered(title));style()});
   $a.appendTo($h);
+}
+
+function main_search() {
+  $("div.custom-control.custom-checkbox").each(function(){
+    var $this = $(this);
+    var option = "FILTER_TAG_" + $this.find("span.badge.badge-secondary").text();
+    var $a = $("<a/>", {style: "position:absolute;right:0"});
+    $a.text(getoption(option) ? "Unfilter" : "Filter");
+    $a.css("color", getoption(option) ? "#a00" : "#0a0");
+    $a.click(function(){
+      setoption(option, !getoption(option));
+      $a.css("color", getoption(option) ? "#a00" : "#0a0");
+      $a.text(getoption(option) ? "Unfilter" : "Filter");
+    });
+    $a.appendTo($this);
+  });
 }
 
 function main_updates() {
@@ -63,7 +85,7 @@ function main_updates() {
     if (isfiltered(title)) {
       $v.hide();
     } else {
-      get_filterifyaoi(title, v[0].find("a.manga_title").attr("href"), $v);
+      xhr_tagfilter(title, v[0].find("a.manga_title").attr("href"), $v);
       filterbutton(title, $v, v[0].find("td:nth-child(3)"), "position:absolute;right:0");
     }
   }
@@ -94,18 +116,36 @@ function filterbutton(s,$hide,$target,style) {
   return $a;
 }
 
-function get_filterifyaoi(title, url, $hide) {
-  if (load(title, "yaoicheck")) return;
-  throttled_get(url, function(html){
-    save(title, "yaoicheck", true);
-    $(html).find("a.genre").each(function(){
-      if ($(this).text() == "Yaoi") {
-        filter(title);
+// Returns filter status: true or false
+function gettags(title, html) {
+  save(title, "tagschecked", time());
+  loadtags(title).forEach((k)=>save(title,k,false));
+  var f = false;
+  function checktags(){
+    var tag = $(this).text();
+    save(title, "TAG_" + tag, true);
+    if (load("__OPTIONS", "FILTER_TAG_" + tag)) {
+      f = true;
+    }
+  }
+  if (typeof html === "undefined") {
+    $("a.genre").each(checktags);
+  } else {
+    $(html).find("a.genre").each(checktags);
+  }
+  return f;
+}
+
+function xhr_tagfilter(title, url, $hide) {
+  if (load(title, "tagschecked")) {
+    loadtags(title).forEach((k)=>{if (getoption("FILTER_"+k)) $hide.hide()});
+  } else {
+    throttled_get(url, function(html){
+      if (gettags(title, html)) {
         $hide.hide();
-        return;
       }
     });
-  });
+  }
 }
 
 // Clear all entries in cache
@@ -117,25 +157,28 @@ function clearall() {
   console.log("Cleared cache.");
 }
 // Clear entries for some identifier in cache
-function clearidentifier(i) {
-  GM_listValues().forEach(function(k){
-    if (k.match('^.' + i)) {
-      GM_deleteValue(k);
-      console.log("Deleted: " + k);
-    }
+function clearfilter(s) {
+  GM_listValues().filter((k)=>k.match(s)).forEach(function(k){
+    GM_deleteValue(k);
+    console.log("Deleted: " + k);
   });
 }
 // List all cache data to console, usable from webconsole for debug
 cache_list = function(filter) {
+  var print = (k)=>console.log(k, GM_getValue(k));
   if (!filter) {
-    console.log(GM_listValues());
+    GM_listValues().forEach(print);
   } else {
-    console.log(GM_listValues().filter((k)=>k.match(filter)));
+    GM_listValues().filter((k)=>k.match(filter)).forEach(print);
   }
 }
-cache_clear = function(){
-  if (confirm("Clear cache?")) {
-    clearall();
+cache_clear = function(filter){
+  if (typeof filter === "undefined") {
+    if (confirm("Clear cache?")) {
+      clearall();
+    }
+  } else {
+    clearfilter(filter);
   }
 }
 // Get nonchanging time
@@ -172,14 +215,18 @@ function save(title, key, val){
   } else {
     try {
       data = JSON.parse(data);
-    } catch {
+    } catch (e){
       data = false;
     }
   }
   if (typeof data !== "object") {
     data = {d: time()};
   }
-  data[key] = val;
+  if (typeof val === undefined || val === false) {
+    delete data[key];
+  } else {
+    data[key] = val;
+  }
   var s = JSON.stringify(data);
   console.log("Stored: " + title + " -> " + s);
   GM_setValue(title, s);
@@ -190,12 +237,24 @@ function filter(title) {
 function load(title, key) {
   var data = GM_getValue(title, false);
   if (data) {
+    if (typeof key === "undefined") {
+      return JSON.parse(data);
+    }
     return JSON.parse(data)[key];
   }
   return false;
 }
+function loadtags(title) {
+  return Object.keys(load(title)).filter((k)=>(k.substring(0,4)==="TAG_"));
+}
 function isfiltered(title){
   return load(title, "f");
+}
+function setoption(option, value) {
+  return save("__OPTIONS", option, value);
+}
+function getoption(option) {
+  return load("__OPTIONS", option);
 }
 cache_text = function() {
   var s = "";
