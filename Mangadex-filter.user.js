@@ -61,7 +61,7 @@ function main_manga() {
   if (anytagfiltered(tags)) {
     $("<a/>", {text: "Filtered by tags.", style: "background-color:#a00;margin-left:30px"}).appendTo($h);
   }
-  var $a = $("<a/>", {style: "margin-left:30px"});
+  var $a = $("<a/>", {style: "margin-left:30px", href: "javascript:;"});
   function style(){
     $h.css("background-color", isfiltered(mid) ? "#a00": "");
     $h.css("background-image", isfiltered(mid) ? "none": "");
@@ -79,7 +79,7 @@ function main_search() {
     var j = i;
     i += 1;
     var istagfiltered = ()=>anytagfiltered([j]);
-    var $a = $("<a/>", {style: "position:absolute;right:0"});
+    var $a = $("<a/>", {style: "position:absolute;right:0", href: "javascript:;"});
     $a.text(istagfiltered() ? "Unfilter" : "Filter");
     $a.css("color", istagfiltered() ? "#a00" : "#0a0");
     $a.click(function(){
@@ -120,7 +120,7 @@ function main_updates() {
 }
 
 function filterbutton(s,$hide,$target,style) {
-  var $a = $("<a/>", {text: "Filter", style: style});
+  var $a = $("<a/>", {text: "Filter", style: style, href: "javascript:;"});
   $a.click(function(){
     $hide.hide();
     filter(s);
