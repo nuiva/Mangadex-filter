@@ -32,43 +32,57 @@ function main_frontpage() {
 function frontpage_processmanga() {
   var $this = $(this);
   var $a = $this.find("a.manga_title");
-  var title = $a.attr("title");
-  if (isfiltered(title)) {
+  var href = $a.attr("href");
+  var mid = hreftomid(href);
+  if (isfiltered(mid)) {
     $this.hide();
     return;
   }
-  xhr_tagfilter(title, $a.attr("href"), $this);
-  filterbutton(title, $this, $this, "position:absolute;right:0;bottom:0");
+  xhr_tagfilter(mid, $this);
+  filterbutton(mid, $this, $this, "position:absolute;right:0;bottom:0");
 }
 
 function main_manga() {
+  if (typeof main_manga.tagdict === "undefined") {
+    var tagtable = ["4-Koma", "Action", "Adventure", "Award Winning", "Comedy", "Cooking", "Doujinshi", "Drama", "Ecchi", "Fantasy", "Gender Bender", "Harem", "Historical", "Horror", "Josei", "Martial Arts", "Mecha", "Medical", "Music", "Mystery", "Oneshot", "Psychological", "Romance", "School Life", "Sci-Fi", "Seinen", "Shoujo", "Shoujo Ai", "Shounen", "Shounen Ai", "Slice of Life", "Smut", "Sports", "Supernatural", "Tragedy", "Webtoon", "Yaoi", "UnYuri", "[no chapters]", "Game", "Isekai"];
+    main_manga.tagdict = {};
+    tagtable.forEach((v,i)=>main_manga.tagdict[v]=i+1);
+  }
   var $h = $("h6.card-header");
-  var title = textcontent($h).trim();
-  if (gettags(title)) {
+  var mid = hreftomid(window.location.pathname);
+  var tags = [];
+  $("a.genre").each(function(){
+    tags.push(main_manga.tagdict[$(this).text()]);
+  });
+  save(mid, "tags", tags);
+  if (anytagfiltered(tags)) {
     $("<a/>", {text: "Filtered by tags.", style: "background-color:#a00;margin-left:30px"}).appendTo($h);
   }
   var $a = $("<a/>", {style: "margin-left:30px"});
   function style(){
-    $h.css("background-color", isfiltered(title) ? "#a00": "");
-    $h.css("background-image", isfiltered(title) ? "none": "");
-    $a.text(isfiltered(title) ? "Unfilter" : "Filter");
+    $h.css("background-color", isfiltered(mid) ? "#a00": "");
+    $h.css("background-image", isfiltered(mid) ? "none": "");
+    $a.text(isfiltered(mid) ? "Unfilter" : "Filter");
   }
   style();
-  $a.click(()=>{save(title, "f", !isfiltered(title));style()});
+  $a.click(()=>{save(mid, "f", !isfiltered(mid));style()});
   $a.appendTo($h);
 }
 
 function main_search() {
+  var i = 1;
   $("div.custom-control.custom-checkbox").each(function(){
     var $this = $(this);
-    var option = "FILTER_TAG_" + $this.find("span.badge.badge-secondary").text();
+    var j = i;
+    i += 1;
+    var istagfiltered = ()=>anytagfiltered([j]);
     var $a = $("<a/>", {style: "position:absolute;right:0"});
-    $a.text(getoption(option) ? "Unfilter" : "Filter");
-    $a.css("color", getoption(option) ? "#a00" : "#0a0");
+    $a.text(istagfiltered() ? "Unfilter" : "Filter");
+    $a.css("color", istagfiltered() ? "#a00" : "#0a0");
     $a.click(function(){
-      setoption(option, !getoption(option));
-      $a.css("color", getoption(option) ? "#a00" : "#0a0");
-      $a.text(getoption(option) ? "Unfilter" : "Filter");
+      filtertag(j, !istagfiltered());
+      $a.css("color", istagfiltered() ? "#a00" : "#0a0");
+      $a.text(istagfiltered() ? "Unfilter" : "Filter");
     });
     $a.appendTo($this);
   });
@@ -76,34 +90,30 @@ function main_search() {
 
 function main_updates() {
   var $table = $("table.table.table-striped.table-sm tr");
-  var title = "";
+  var mid = -1;
   var singleseries = [];
   var first = 1;
-  function filterarray(title, v) {
-    if (!v.length) return;
+  function filterarray(mid, v) {
+    if (mid === -1) return;
     var $v = $(v.map((e)=>e[0]));
-    if (isfiltered(title)) {
+    if (isfiltered(mid)) {
       $v.hide();
     } else {
-      xhr_tagfilter(title, v[0].find("a.manga_title").attr("href"), $v);
-      filterbutton(title, $v, v[0].find("td:nth-child(3)"), "position:absolute;right:0");
+      xhr_tagfilter(mid, $v);
+      filterbutton(mid, $v, v[0].find("td:nth-child(3)"), "position:absolute;right:0");
     }
   }
   $table.each(function(){
     var $this = $(this);
     var $a = $this.find("a.manga_title");
     if ($a.text()) {
-      filterarray(title, singleseries);
+      filterarray(mid, singleseries);
       singleseries = [];
-      title = $a.attr("title");
+      mid = hreftomid($a.attr("href")) || -1;
     }
-    if (first) {
-      first = 0;
-    } else {
-      singleseries.push($this);
-    }
+    singleseries.push($this);
   });
-  filterarray(title, singleseries);
+  filterarray(mid, singleseries);
 }
 
 function filterbutton(s,$hide,$target,style) {
@@ -116,32 +126,16 @@ function filterbutton(s,$hide,$target,style) {
   return $a;
 }
 
-// Returns filter status: true or false
-function gettags(title, html) {
-  save(title, "tagschecked", time());
-  loadtags(title).forEach((k)=>save(title,k,false));
-  var f = false;
-  function checktags(){
-    var tag = $(this).text();
-    save(title, "TAG_" + tag, true);
-    if (load("__OPTIONS", "FILTER_TAG_" + tag)) {
-      f = true;
+function xhr_tagfilter(mid, $hide) {
+  if (load(mid, "tagschecked")) {
+    if (anytagfiltered(load(mid, "tags"))) {
+      $hide.hide();
     }
-  }
-  if (typeof html === "undefined") {
-    $("a.genre").each(checktags);
   } else {
-    $(html).find("a.genre").each(checktags);
-  }
-  return f;
-}
-
-function xhr_tagfilter(title, url, $hide) {
-  if (load(title, "tagschecked")) {
-    loadtags(title).forEach((k)=>{if (getoption("FILTER_"+k)) $hide.hide()});
-  } else {
-    throttled_get(url, function(html){
-      if (gettags(title, html)) {
+    throttled_get(midtoapihref(mid), function(json){
+      save(mid, "tags", json.manga.genres);
+      save(mid, "tagschecked", time());
+      if (anytagfiltered(json.manga.genres)) {
         $hide.hide();
       }
     });
@@ -194,7 +188,7 @@ function throttled_get_delay() {
   if (typeof throttled_get_delay.lastgettime === "undefined") {
     throttled_get_delay.lastgettime = 0;
   }
-  throttled_get_delay.lastgettime += 1100;
+  throttled_get_delay.lastgettime += 200;
   var now = new Date().getTime();
   var delay = throttled_get_delay.lastgettime - now;
   if (delay < 0) {
@@ -206,8 +200,8 @@ function throttled_get_delay() {
 function throttled_get(url, callback) {
   setTimeout(()=>$.get(url, callback), throttled_get_delay());
 }
-function save(title, key, val){
-  var data = GM_getValue(title, false);
+function save(mid, key, val){
+  var data = GM_getValue(mid, false);
   if (!data) {
     data = {d: time()};
   } else if (data === 1) {
@@ -228,14 +222,14 @@ function save(title, key, val){
     data[key] = val;
   }
   var s = JSON.stringify(data);
-  console.log("Stored: " + title + " -> " + s);
-  GM_setValue(title, s);
+  console.log("Stored: " + mid + " -> " + s);
+  GM_setValue(mid, s);
 }
-function filter(title) {
-  save(title, "f", true);
+function filter(mid) {
+  save(mid, "f", true);
 }
-function load(title, key) {
-  var data = GM_getValue(title, false);
+function load(mid, key) {
+  var data = GM_getValue(mid, false);
   if (data) {
     if (typeof key === "undefined") {
       return JSON.parse(data);
@@ -244,11 +238,25 @@ function load(title, key) {
   }
   return false;
 }
-function loadtags(title) {
-  return Object.keys(load(title)).filter((k)=>(k.substring(0,4)==="TAG_"));
+function filtertag(tag, state) {
+  var tags = getoption("TAGS_FILTERED");
+  if (!tags) {
+    tags = [];
+  }
+  if (state) {
+    if (tags.indexOf(tag) === -1) {
+      tags.push(tag);
+    }
+  } else {
+    var i = tags.indexOf(tag);
+    if (i !== -1) {
+      tags.splice(i,1);
+    }
+  }
+  setoption("TAGS_FILTERED", tags);
 }
-function isfiltered(title){
-  return load(title, "f");
+function isfiltered(mid){
+  return load(mid, "f");
 }
 function setoption(option, value) {
   return save("__OPTIONS", option, value);
@@ -268,6 +276,23 @@ function textcontent($x) {
   var s = "";
   $x[0].childNodes.forEach(function(e){if (e.nodeType == Node.TEXT_NODE) s += e.textContent;});
   return s;
+}
+function hreftomid(href) {
+  return href.match("[0-9]+");
+}
+function midtohref(mid) {
+  return "/manga/" + mid;
+}
+function midtoapihref(mid) {
+  return "/api/manga/" + mid;
+}
+function intersection(a,b) {
+  return a.filter(x => -1 !== b.indexOf(x));
+}
+function anytagfiltered(tags) {
+  var filtered = getoption("TAGS_FILTERED");
+  if (!tags || !filtered) return false;
+  return intersection(tags,filtered).length > 0;
 }
 
 function filter_query(s,$controldiv){

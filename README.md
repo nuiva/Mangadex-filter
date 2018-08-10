@@ -1,6 +1,6 @@
 # Mangadex filter
 
-Filters yaoi-tagged and user-specified series at Mangadex [frontpage](https://mangadex.org/) and [recent updates listing](https://mangadex.org/updates).
+Filters manga with certain tags and user-specified manga series at Mangadex [frontpage](https://mangadex.org/) and [recent updates listing](https://mangadex.org/updates).
 
 ## Installation
 
@@ -10,8 +10,8 @@ Get Violentmonkey or Greasemonkey browser extension from Google. Then click [her
 
 Go to Mangadex [search page](https://mangadex.org/search) to set the tag filters. The toggles are shown next to the included/excluded genres.
 
-The tag filtering is capped at 1 checked manga every 1.1 seconds to avoid autoban. It is slow at first, but seen series are cached and not fetched again.
+Note that there is a 600 requests/10min limit on some Mangadex pages, and this script requests every manga that you have seen **for the first time**. Hence, refreshing all recent updates pages right after installation is not recommended, though no bans have been received yet.
 
-For manual filtering, there are "Filter" buttons near the series name. You can unfilter series at their specific page, e.g., https://mangadex.org/manga/11796
+For manual filtering, there are "Filter" buttons near the series name. You can unfilter series at their specific page.
 
-The script includes some tools for bulk filtering, but it's quite messy so I don't recommend looking into it.
+The script includes some tools for bulk filtering, but they are currently out of commission.
