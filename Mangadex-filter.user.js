@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 5
+// @version 6
 // @match *://mangadex.org/
 // @match *://mangadex.org/search
 // @match *://mangadex.org/updates*
@@ -135,21 +135,20 @@ function xhr_tagfilter(mid, $hide) {
       $hide.hide();
     }
   } else {
-    throttled_get(midtoapihref(mid), function(json){
-      save(mid, "tags", json.manga.genres);
-      save(mid, "tagschecked", time());
-      if (anytagfiltered(json.manga.genres)) {
+    xhr_get(mid, function(data){
+      if (anytagfiltered(data.manga.genres)) {
         $hide.hide();
       }
     }, 200);
   }
 }
-function xhr_get(mid, callback) {
+function xhr_get(mid, callback, delay = 1100) {
   throttled_get(midtoapihref(mid),function(data){
+    save(mid, "title", data.manga.title);
     save(mid, "tags", data.manga.genres);
     save(mid, "tagschecked", time());
     callback(data);
-  });
+  }, delay);
 }
 
 // Clear all entries in cache
@@ -328,12 +327,13 @@ function controlpanel_listcache($table, update_xhr) {
     var $tr = $("<tr/>").appendTo($table);
     $("<td/>", {text: k}).appendTo($tr);
     if (k !== "__OPTIONS") {
-      $tr.css("background-color", isfiltered(k) ? "#a00" : "#0a0");
       var $name = $("<td/>").appendTo($tr);
       var $cache = $("<td/>").appendTo($tr);
       var $extra = $("<td/>").appendTo($tr);
       function update() {
-        $tr.css("background-color", isfiltered(k) ? "#a00" : (anytagfiltered(load(k, "tags")) ? "#aa0" : "#0a0"));
+        var data = load(k);
+        $tr.css("background-color", data.f ? "#a00" : (anytagfiltered(data.tags) ? "#aa0" : "#0a0"));
+        $name.text(data.title);
         $cache.text(GM_getValue(k));
       }
       update();
