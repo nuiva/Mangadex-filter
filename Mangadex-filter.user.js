@@ -8,6 +8,7 @@
 // @match *://mangadex.org/manga/*
 // @require      https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js
 // @require      https://raw.githubusercontent.com/hiddentao/fast-levenshtein/master/levenshtein.js
+// @require https://raw.githubusercontent.com/mathiasbynens/he/master/he.js
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_listValues
@@ -333,16 +334,15 @@ function controlpanel_listcache($table, update_xhr) {
       function update() {
         var data = load(k);
         $tr.css("background-color", data.f ? "#a00" : (anytagfiltered(data.tags) ? "#aa0" : "#0a0"));
-        $name.text(data.title);
+        $name[0].innerHTML = data.title; // jQuery can't handle HTML entity codes
         $cache.text(GM_getValue(k));
       }
       update();
       if (update_xhr) {
         xhr_get(k, function(data){
-          $name.text(data.manga.title);
           $extra.text(JSON.stringify(data.manga));
           update();
-        })
+        });
       }
       function togglefilter(){
         save(k, "f", !isfiltered(k));
