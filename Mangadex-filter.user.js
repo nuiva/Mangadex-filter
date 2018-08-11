@@ -344,10 +344,13 @@ function controlpanel_listcache($table, update_xhr) {
           update();
         })
       }
-      $tr.click(function(){
+      function togglefilter(){
         save(k, "f", !isfiltered(k));
         update();
-      })
+      }
+      $name.click(togglefilter);
+      $cache.click(togglefilter);
+      $extra.click(togglefilter);
     } else {
       $("<td/>", {text: k}).appendTo($tr);
       $("<td/>", {text: GM_getValue(k)}).appendTo($tr);
