@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 8
+// @version 9
 // @match *://mangadex.org/
 // @match *://mangadex.org/search
 // @match *://mangadex.org/updates*
@@ -59,12 +59,15 @@ function frontpage_processmanga() {
 function main_manga() {
   var $h = $("h6.card-header");
   var mid = hreftomid(window.location.pathname);
+  var title = textcontent($("h6.card-header")).trim();
   var tags = [];
   var tagdict = tagmap(1);
   $("a.genre").each(function(){
     tags.push(tagdict[$(this).text()]);
   });
+  save(mid, "title", title);
   save(mid, "tags", tags);
+  save(mid, "tagschecked", time());
   if (anytagfiltered(tags)) {
     $("<a/>", {text: "Filtered by tags.", style: "background-color:#a00;margin-left:30px"}).appendTo($h);
   }
