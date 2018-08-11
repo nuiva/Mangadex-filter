@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 9
+// @version 10
 // @match *://mangadex.org/
 // @match *://mangadex.org/search
 // @match *://mangadex.org/updates*
@@ -329,7 +329,7 @@ function tagmap(dir) { // dir == 0: index -> name ##  dir == 1: name -> index
   return tagmap.tagtable;
 }
 
-
+cache_update = ()=>console.log("Need to open control panel.");
 function controlpanel(){
   if (typeof controlpanel.div === "undefined") {
     controlpanel.div = $("<div/>", {style: "position:fixed;top:0;left:0;width:100%;height:100%;z-index:10000;background-color:#fff;color:#000"});
@@ -340,7 +340,7 @@ function controlpanel(){
     datatable.appendTo(controlpanel.div);
     $("<button>Show tags</button>").click(()=>controlpanel_listtags(datatable)).appendTo(controldiv);
     $("<button>List cache</button>").click(()=>controlpanel_listcache(datatable, false)).appendTo(controldiv);
-    $("<button>Update cache</button>").click(()=>controlpanel_listcache(datatable, true)).appendTo(controldiv);
+    cache_update = ()=>controlpanel_listcache(datatable, true);
     $("<button>Close</button>").click(()=>controlpanel.div.hide()).appendTo(controldiv);
   }
   controlpanel.div.show();
@@ -352,10 +352,11 @@ function controlpanel_listcache($table, update_xhr) {
   GM_listValues().forEach(function(k){
     var $tr = $("<tr/>", {style: "border-bottom:1px solid black"}).appendTo($table);
     if (k !== "__OPTIONS") {
-      $("<td/>").appendTo($tr).append($("<a/>", {text: k, href: midtohref(k), style: "color: #00c"}));
-      var $name = $("<td/>").appendTo($tr);
-      var $cache = $("<td/>").appendTo($tr);
-      var $extra = $("<td/>").appendTo($tr);
+      $("<td/>", {style: "padding-left:10px"}).appendTo($tr).append($("<a/>", {text: k, href: midtohref(k), style: "color: #00c"}));
+      var $controls = $("<td/>", {style: "padding-left:10px"}).appendTo($tr);
+      var $name = $("<td/>", {style: "padding-left:10px"}).appendTo($tr);
+      var $cache = $("<td/>", {style: "padding-left:10px"}).appendTo($tr);
+      var $extra = $("<td/>", {style: "padding-left:10px"}).appendTo($tr);
       function update() {
         var data = load(k);
         $tr.css("background-color", data.f ? "#a00" : (anytagfiltered(data.tags) ? "#aa0" : "#0a0"));
@@ -363,12 +364,13 @@ function controlpanel_listcache($table, update_xhr) {
         $cache.text(GM_getValue(k));
       }
       update();
-      if (update_xhr) {
+      function xhr_update(){
         xhr_get(k, function(data){
           $extra.text(JSON.stringify(data.manga));
           update();
         });
       }
+      if (update_xhr) xhr_update();
       function togglefilter(){
         save(k, "f", !isfiltered(k));
         update();
@@ -376,9 +378,14 @@ function controlpanel_listcache($table, update_xhr) {
       $name.click(togglefilter);
       $cache.click(togglefilter);
       $extra.click(togglefilter);
+      $controls.append(
+        $("<a/>", {text: "Update", href: "javascript:;", style: "color:#000"}).click(xhr_update)
+      ).append(
+        $("<a/>", {text: "Remove", href: "javascript:;", style: "color:#000;margin-left:5px"}).click(function(){GM_deleteValue(k);$tr.remove()})
+      )
     } else {
       $("<td/>", {text: k}).appendTo($tr);
-      $("<td/>", {text: GM_getValue(k)}).appendTo($tr);
+      $("<td/>", {text: GM_getValue(k), colspan: "9"}).appendTo($tr);
     }
   });
 }
