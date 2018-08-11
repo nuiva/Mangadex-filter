@@ -28,7 +28,17 @@ if (window.location.pathname === "/") {
 
 function main_frontpage() {
   $("#latest_update div.col-md-6").each(frontpage_processmanga);
-  //$("div.tab-pane li").each(frontpage_processmanga);
+  function colorbyfilter() {
+    var $this = $(this);
+    var mid = hreftomid($this.find("a.manga_title").attr("href"));
+    if (isfiltered(mid)) {
+      $this.css("background-color","rgba(255,0,0,0.5)");
+    } else if (anytagfiltered(load(mid, "tags"))) {
+      $this.css("background-color","rgba(120,120,0,0.5)");
+    }
+  }
+  $("div.tab-pane li").each(colorbyfilter);
+  $("div.large_logo div.car-caption").each(colorbyfilter);
   button = $("<button>Mangadex filter</button>");
   button.click(controlpanel);
   button.appendTo("nav.navbar");
@@ -287,6 +297,7 @@ function textcontent($x) {
   return s;
 }
 function hreftomid(href) {
+  if (typeof href === "undefined") return false;
   return href.match("[0-9]+");
 }
 function midtohref(mid) {
