@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 7
+// @version 8
 // @match *://mangadex.org/
 // @match *://mangadex.org/search
 // @match *://mangadex.org/updates*
@@ -47,16 +47,12 @@ function frontpage_processmanga() {
 }
 
 function main_manga() {
-  if (typeof main_manga.tagdict === "undefined") {
-    var tagtable = ["4-Koma", "Action", "Adventure", "Award Winning", "Comedy", "Cooking", "Doujinshi", "Drama", "Ecchi", "Fantasy", "Gender Bender", "Harem", "Historical", "Horror", "Josei", "Martial Arts", "Mecha", "Medical", "Music", "Mystery", "Oneshot", "Psychological", "Romance", "School Life", "Sci-Fi", "Seinen", "Shoujo", "Shoujo Ai", "Shounen", "Shounen Ai", "Slice of Life", "Smut", "Sports", "Supernatural", "Tragedy", "Webtoon", "Yaoi", "Yuri", "[no chapters]", "Game", "Isekai"];
-    main_manga.tagdict = {};
-    tagtable.forEach((v,i)=>main_manga.tagdict[v]=i+1);
-  }
   var $h = $("h6.card-header");
   var mid = hreftomid(window.location.pathname);
   var tags = [];
+  var tagdict = tagmap(1);
   $("a.genre").each(function(){
-    tags.push(main_manga.tagdict[$(this).text()]);
+    tags.push(tagdict[$(this).text()]);
   });
   save(mid, "tags", tags);
   if (anytagfiltered(tags)) {
@@ -265,6 +261,9 @@ function filtertag(tag, state) {
   }
   setoption("TAGS_FILTERED", tags);
 }
+function istagfiltered(tag) {
+  return getoption("TAGS_FILTERED").indexOf(tag) !== -1;
+}
 function isfiltered(mid){
   return load(mid, "f");
 }
@@ -304,6 +303,17 @@ function anytagfiltered(tags) {
   if (!tags || !filtered) return false;
   return intersection(tags,filtered).length > 0;
 }
+function tagmap(dir) { // dir == 0: index -> name ##  dir == 1: name -> index
+  if (typeof tagmap.tagtable === "undefined") {
+    tagmap.tagtable = ["4-Koma", "Action", "Adventure", "Award Winning", "Comedy", "Cooking", "Doujinshi", "Drama", "Ecchi", "Fantasy", "Gender Bender", "Harem", "Historical", "Horror", "Josei", "Martial Arts", "Mecha", "Medical", "Music", "Mystery", "Oneshot", "Psychological", "Romance", "School Life", "Sci-Fi", "Seinen", "Shoujo", "Shoujo Ai", "Shounen", "Shounen Ai", "Slice of Life", "Smut", "Sports", "Supernatural", "Tragedy", "Webtoon", "Yaoi", "Yuri", "[no chapters]", "Game", "Isekai"];
+    tagmap.tagdict = {};
+    tagmap.tagtable.forEach((v,i)=>tagmap.tagdict[v]=i+1);
+  }
+  if (dir) {
+    return tagmap.tagdict;
+  }
+  return tagmap.tagtable;
+}
 
 
 function controlpanel(){
@@ -314,6 +324,7 @@ function controlpanel(){
     controldiv.appendTo(controlpanel.div);
     var datatable = $("<table/>", {style: "display: block; overflow: auto; white-space: nowrap; position:absolute;bottom:0;left:0;top:30px;width:100%;background-color:#fff"});
     datatable.appendTo(controlpanel.div);
+    $("<button>Show tags</button>").click(()=>controlpanel_listtags(datatable)).appendTo(controldiv);
     $("<button>List cache</button>").click(()=>controlpanel_listcache(datatable, false)).appendTo(controldiv);
     $("<button>Update cache</button>").click(()=>controlpanel_listcache(datatable, true)).appendTo(controldiv);
     $("<button>Close</button>").click(()=>controlpanel.div.hide()).appendTo(controldiv);
@@ -355,5 +366,18 @@ function controlpanel_listcache($table, update_xhr) {
       $("<td/>", {text: k}).appendTo($tr);
       $("<td/>", {text: GM_getValue(k)}).appendTo($tr);
     }
+  });
+}
+
+function controlpanel_listtags($table){
+  $table.find("tr").remove();
+  var i = 1;
+  tagmap(0).forEach(function(v){
+    var j = i;
+    var $tr = $("<tr/>", {style: "border-bottom: 1px solid black"}).append("<td>" + j + "</td>").append("<td style=\"padding:0 10px 0 20px\">" + v + "</td>");
+    $tr.click(()=>{filtertag(j,!istagfiltered(j));$tr.css("background-color",istagfiltered(j)?"#aa0":"#0a0")});
+    $tr.css("background-color",istagfiltered(j)?"#aa0":"#0a0")
+    $tr.appendTo($table);
+    i += 1;
   });
 }
