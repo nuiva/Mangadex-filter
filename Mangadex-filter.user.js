@@ -216,8 +216,8 @@ function throttled_get_delay(incr = 1100) {
   }
   return delay;
 }
-function throttled_get(url, callback) {
-  setTimeout(()=>$.get(url, callback), throttled_get_delay());
+function throttled_get(url, callback, delay = 1100) {
+  setTimeout(()=>$.get(url, callback), throttled_get_delay(delay));
 }
 function save(mid, key, val){
   var data = GM_getValue(mid, false);
@@ -384,8 +384,7 @@ function controlpanel_listcache($table, update_xhr) {
         $("<a/>", {text: "Remove", href: "javascript:;", style: "color:#000;margin-left:5px"}).click(function(){GM_deleteValue(k);$tr.remove()})
       )
     } else {
-      $("<td/>", {text: k}).appendTo($tr);
-      $("<td/>", {text: GM_getValue(k), colspan: "9"}).appendTo($tr);
+      $("<td/>", {text: k + ": " + GM_getValue(k), colspan: "9"}).appendTo($tr);
     }
   });
 }
