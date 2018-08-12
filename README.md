@@ -1,6 +1,11 @@
 # Mangadex filter
 
-Filters manga with certain tags and user-specified manga series at Mangadex [frontpage](https://mangadex.org/) and [recent updates listing](https://mangadex.org/updates).
+This is a browser userscript that allows manga filtering at Mangadex. Series may be filtered by
+* tags,
+* original language,
+* filtering each individually.
+
+Filtered manga are hidden in the latest updates view on the [frontpage](https://mangadex.org/) and the [updates page](https://mangadex.org/updates). Top chapters lists, follows, searches and other lists are not filtered.
 
 ## Installation
 
@@ -10,11 +15,12 @@ Get Violentmonkey or Greasemonkey browser extension from Google. Then click [her
 
 ### Filtering by tag
 
-You may filter tags in two ways:
+Click *Mangadex filter* at the upper right corner of the [frontpage](https://mangadex.org/) and then click *Show tags*. Click on a tag row to filter. Green means not filtered, yellow means filtered.
 
-1. Go to Mangadex [search page](https://mangadex.org/search). Click on the *Filtered* text buttons to filter a tag. Green means not filtered, red means filtered.
+### Filtering by language
 
-2. Click *Mangadex filter* at the upper right corner of the [frontpage](https://mangadex.org/) and then click *Show tags*. Click on a tag row to filter. Green means not filtered, yellow means filtered.
+Find a manga with the original language you wish to filter. Navigate to the series' page and hover over the country flag next to the title. It says something like "Japanese" or "Chinese (Simp)".
+Click *Mangadex filter* at the upper right corner of the [frontpage](https://mangadex.org/) and then click *Languages*. Write the language you found earlier into the textbox and click *Filter*.
 
 ### Filtering single series
 
@@ -25,9 +31,3 @@ You may unfilter manga in two ways:
 1. Go to the series' page and click *Unfilter* next to the title.
 
 2. Click *Mangadex filter* at the upper right corner of the [frontpage](https://mangadex.org/) and then click *List cache*. Click on a row to toggle filter. Green means not filtered, yellow is filtered by tag, red means manually filtered.
-
-### Scope
-
-This script only affects the latest updates view on the [frontpage](https://mangadex.org/) and the [updates page](https://mangadex.org/updates). Top chapters lists, follows, searches and other lists are not filtered.
-
-Note that there is a 600 requests/10min limit on some Mangadex pages, and this script requests every manga that you have seen **for the first time**. Hence, refreshing all recent updates pages right after installation is not recommended, though no bans have been received yet.

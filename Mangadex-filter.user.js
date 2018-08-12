@@ -1,9 +1,8 @@
 // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 10
+// @version 11
 // @match *://mangadex.org/
-// @match *://mangadex.org/search
 // @match *://mangadex.org/updates*
 // @match *://mangadex.org/manga/*
 // @require      https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js
@@ -20,25 +19,19 @@ if (window.location.pathname === "/") {
   main_frontpage();
 } else if (window.location.pathname.match("/updates")) {
   main_updates();
-} else if (window.location.pathname === "/search") {
-  main_search();
 } else {
   main_manga();
 }
 
 function main_frontpage() {
   $("#latest_update div.col-md-6").each(frontpage_processmanga);
-  function colorbyfilter() {
+  function color() {
     var $this = $(this);
     var mid = hreftomid($this.find("a.manga_title").attr("href"));
-    if (isfiltered(mid)) {
-      $this.css("background-color","rgba(255,0,0,0.5)");
-    } else if (anytagfiltered(load(mid, "tags"))) {
-      $this.css("background-color","rgba(120,120,0,0.5)");
-    }
+    colorbyfilter(mid, $this, 0.3);
   }
-  $("div.tab-pane li").each(colorbyfilter);
-  $("div.large_logo div.car-caption").each(colorbyfilter);
+  $("div.tab-pane li").each(color);
+  $("div.large_logo div.car-caption").each(color);
   button = $("<button>Mangadex filter</button>");
   button.click(controlpanel);
   button.appendTo("nav.navbar");
@@ -48,16 +41,14 @@ function frontpage_processmanga() {
   var $a = $this.find("a.manga_title");
   var href = $a.attr("href");
   var mid = hreftomid(href);
-  if (isfiltered(mid)) {
-    $this.hide();
-    return;
-  }
-  xhr_tagfilter(mid, $this);
+  xhr_get(mid, function(){
+    if (isfiltered_general(mid)) $this.hide();
+  }, 200);
   filterbutton(mid, $this, $this, "position:absolute;right:0;bottom:0");
 }
 
 function main_manga() {
-  var $h = $("h6.card-header");
+  var $h = $("h6.card-header").first();
   var mid = hreftomid(window.location.pathname);
   var title = textcontent($("h6.card-header")).trim();
   var tags = [];
@@ -65,40 +56,26 @@ function main_manga() {
   $("a.genre").each(function(){
     tags.push(tagdict[$(this).text()]);
   });
+  var lang = $h.find("img.flag").attr("title");
   save(mid, "title", title);
   save(mid, "tags", tags);
   save(mid, "tagschecked", time());
-  if (anytagfiltered(tags)) {
-    $("<a/>", {text: "Filtered by tags.", style: "background-color:#a00;margin-left:30px"}).appendTo($h);
+  save(mid, "lang", lang);
+  if (isfiltered_bytag(mid)) {
+    $("<a/>", {text: "Filtered by tags.", style: "margin-left:30px"}).appendTo($h);
+  }
+  if (isfiltered_bylang(mid)) {
+    $("<a/>", {text: "Filtered by language.", style: "margin-left:30px"}).appendTo($h);
   }
   var $a = $("<a/>", {style: "margin-left:30px", href: "javascript:;"});
+  $h.css("background-image", "none");
   function style(){
-    $h.css("background-color", isfiltered(mid) ? "#a00": "");
-    $h.css("background-image", isfiltered(mid) ? "none": "");
+    colorbyfilter(mid, $h, 0.5);
     $a.text(isfiltered(mid) ? "Unfilter" : "Filter");
   }
   style();
   $a.click(()=>{save(mid, "f", !isfiltered(mid));style()});
   $a.appendTo($h);
-}
-
-function main_search() {
-  var i = 1;
-  $("div.custom-control.custom-checkbox").each(function(){
-    var $this = $(this);
-    var j = i;
-    i += 1;
-    var istagfiltered = ()=>anytagfiltered([j]);
-    var $a = $("<a/>", {style: "position:absolute;right:0", href: "javascript:;"});
-    $a.text(istagfiltered() ? "Unfilter" : "Filter");
-    $a.css("color", istagfiltered() ? "#a00" : "#0a0");
-    $a.click(function(){
-      filtertag(j, !istagfiltered());
-      $a.css("color", istagfiltered() ? "#a00" : "#0a0");
-      $a.text(istagfiltered() ? "Unfilter" : "Filter");
-    });
-    $a.appendTo($this);
-  });
 }
 
 function main_updates() {
@@ -109,12 +86,10 @@ function main_updates() {
   function filterarray(mid, v) {
     if (mid === -1) return;
     var $v = $(v.map((e)=>e[0]));
-    if (isfiltered(mid)) {
-      $v.hide();
-    } else {
-      xhr_tagfilter(mid, $v);
-      filterbutton(mid, $v, v[0].find("td:nth-child(3)"), "position:absolute;right:0");
-    }
+    xhr_get(mid, function(){
+      if (isfiltered_general(mid)) $v.hide();
+    }, 200);
+    filterbutton(mid, $v, v[0].find("td:nth-child(3)"), "position:absolute;right:0");
   }
   $table.each(function(){
     var $this = $(this);
@@ -139,59 +114,30 @@ function filterbutton(s,$hide,$target,style) {
   return $a;
 }
 
-function xhr_tagfilter(mid, $hide) {
-  if (load(mid, "tagschecked")) {
-    if (anytagfiltered(load(mid, "tags"))) {
-      $hide.hide();
-    }
+function xhr_get(mid, callback, delay = 1100, usecache = true) {
+  if (usecache && load(mid, "tagschecked")) {
+    callback();
   } else {
-    xhr_get(mid, function(data){
-      if (anytagfiltered(data.manga.genres)) {
-        $hide.hide();
-      }
-    }, 200);
+    throttled_get(midtoapihref(mid),function(data){
+      save(mid, "title", data.manga.title);
+      save(mid, "tags", data.manga.genres);
+      save(mid, "tagschecked", time());
+      save(mid, "lang", data.manga.lang_name);
+      callback();
+    }, delay);
   }
-}
-function xhr_get(mid, callback, delay = 1100) {
-  throttled_get(midtoapihref(mid),function(data){
-    save(mid, "title", data.manga.title);
-    save(mid, "tags", data.manga.genres);
-    save(mid, "tagschecked", time());
-    callback(data);
-  }, delay);
 }
 
-// Clear all entries in cache
-function clearall() {
-  GM_listValues().forEach(function(k){
-    console.log("Cleared: " + k);
-    GM_deleteValue(k);
-  });
-  console.log("Cleared cache.");
-}
-// Clear entries for some identifier in cache
-function clearfilter(s) {
-  GM_listValues().filter((k)=>k.match(s)).forEach(function(k){
-    GM_deleteValue(k);
-    console.log("Deleted: " + k);
-  });
-}
 // List all cache data to console, usable from webconsole for debug
-cache_list = function(filter) {
-  var print = (k)=>console.log(k, GM_getValue(k));
-  if (!filter) {
-    GM_listValues().forEach(print);
-  } else {
-    GM_listValues().filter((k)=>k.match(filter)).forEach(print);
-  }
+cache_get = function(filter) {
+  var v = GM_listValues().filter(k=>k.match(filter));
+  console.log(v);
+  return v;
 }
 cache_clear = function(filter){
-  if (typeof filter === "undefined") {
-    if (confirm("Clear cache?")) {
-      clearall();
-    }
-  } else {
-    clearfilter(filter);
+  var v = cache_get(filter);
+  if (confirm("Specific entries shown in log.\nClear cache?")) {
+    v.forEach(GM_deleteValue);
   }
 }
 // Get nonchanging time
@@ -257,28 +203,71 @@ function load(mid, key) {
   }
   return false;
 }
-function filtertag(tag, state) {
-  var tags = getoption("TAGS_FILTERED");
-  if (!tags) {
-    tags = [];
-  }
+function optarray_get(option){
+  return getoption(option) || [];
+}
+function optarray_getval(option, value){
+  return optarray_get(option).indexOf(value) !== -1;
+}
+function optarray_setval(option, value, state) {
+  var v = getoption(option);
+  if (!v) v = [];
   if (state) {
-    if (tags.indexOf(tag) === -1) {
-      tags.push(tag);
+    if (v.indexOf(value) === -1) {
+      v.push(value);
     }
   } else {
-    var i = tags.indexOf(tag);
+    var i = v.indexOf(value);
     if (i !== -1) {
-      tags.splice(i,1);
+      v.splice(i,1);
     }
   }
-  setoption("TAGS_FILTERED", tags);
+  setoption(option, v);
+}
+function filtertag(tag, state) {
+  return optarray_setval("TAGS_FILTERED", tag, state);
 }
 function istagfiltered(tag) {
-  return getoption("TAGS_FILTERED").indexOf(tag) !== -1;
+  return optarray_getval("TAGS_FILTERED", tag);
 }
 function isfiltered(mid){
   return load(mid, "f");
+}
+function isfiltered_bytag(mid){
+  var tags = load(mid, "tags");
+  var filtered = getoption("TAGS_FILTERED");
+  if (!tags || !filtered) return false;
+  return intersection(tags,filtered).length > 0;
+}
+function isfiltered_bylang(mid){
+  var lang = load(mid, "lang");
+  var filtered = getoption("FILTERED_LANGS");
+  if (!lang || !filtered) return false;
+  return filtered.indexOf(lang) !== -1;
+}
+function isfiltered_general(mid){
+  return isfiltered(mid) || isfiltered_bytag(mid) || isfiltered_bylang(mid);
+}
+function color_green(opacity = 1){
+  return "rgba(0,255,0," + opacity + ")";
+}
+function color_yellow(opacity = 1){
+  return "rgba(255,255,25," + opacity + ")";
+}
+function color_red(opacity = 1){
+  return "rgba(255,0,0," + opacity + ")";
+}
+function colorbyfilter(mid, $elem, opacity = 1){
+  if (!$elem.attr("orig-color")) {
+    $elem.attr("orig-color", $elem.css("background-color"));
+  }
+  if (isfiltered(mid)) {
+    $elem.css("background-color", color_red(opacity));
+  } else if (isfiltered_bytag(mid) || isfiltered_bylang(mid)) {
+    $elem.css("background-color", color_yellow(opacity));
+  } else {
+    $elem.css("background-color", $elem.attr("orig-color"));
+  }
 }
 function setoption(option, value) {
   return save("__OPTIONS", option, value);
@@ -312,11 +301,6 @@ function midtoapihref(mid) {
 function intersection(a,b) {
   return a.filter(x => -1 !== b.indexOf(x));
 }
-function anytagfiltered(tags) {
-  var filtered = getoption("TAGS_FILTERED");
-  if (!tags || !filtered) return false;
-  return intersection(tags,filtered).length > 0;
-}
 function tagmap(dir) { // dir == 0: index -> name ##  dir == 1: name -> index
   if (typeof tagmap.tagtable === "undefined") {
     tagmap.tagtable = ["4-Koma", "Action", "Adventure", "Award Winning", "Comedy", "Cooking", "Doujinshi", "Drama", "Ecchi", "Fantasy", "Gender Bender", "Harem", "Historical", "Horror", "Josei", "Martial Arts", "Mecha", "Medical", "Music", "Mystery", "Oneshot", "Psychological", "Romance", "School Life", "Sci-Fi", "Seinen", "Shoujo", "Shoujo Ai", "Shounen", "Shounen Ai", "Slice of Life", "Smut", "Sports", "Supernatural", "Tragedy", "Webtoon", "Yaoi", "Yuri", "[no chapters]", "Game", "Isekai"];
@@ -340,6 +324,7 @@ function controlpanel(){
     datatable.appendTo(controlpanel.div);
     $("<button>Show tags</button>").click(()=>controlpanel_listtags(datatable)).appendTo(controldiv);
     $("<button>List cache</button>").click(()=>controlpanel_listcache(datatable, false)).appendTo(controldiv);
+    $("<button>Languages</button>").click(()=>controlpanel_langs(datatable)).appendTo(controldiv);
     cache_update = ()=>controlpanel_listcache(datatable, true);
     $("<button>Close</button>").click(()=>controlpanel.div.hide()).appendTo(controldiv);
   }
@@ -350,27 +335,21 @@ function controlpanel(){
 function controlpanel_listcache($table, update_xhr) {
   $table.find("tr").remove();
   GM_listValues().forEach(function(k){
-    var $tr = $("<tr/>", {style: "border-bottom:1px solid black"}).appendTo($table);
     if (k !== "__OPTIONS") {
+      var $tr = $("<tr/>", {style: "border-bottom:1px solid black"}).appendTo($table);
       $("<td/>", {style: "padding-left:10px"}).appendTo($tr).append($("<a/>", {text: k, href: midtohref(k), style: "color: #00c"}));
       var $controls = $("<td/>", {style: "padding-left:10px"}).appendTo($tr);
       var $name = $("<td/>", {style: "padding-left:10px"}).appendTo($tr);
       var $cache = $("<td/>", {style: "padding-left:10px"}).appendTo($tr);
       var $extra = $("<td/>", {style: "padding-left:10px"}).appendTo($tr);
+      $tr.css("background-color", color_green(0.6));
       function update() {
-        var data = load(k);
-        $tr.css("background-color", data.f ? "#a00" : (anytagfiltered(data.tags) ? "#aa0" : "#0a0"));
-        $name[0].innerHTML = data.title; // jQuery can't handle HTML entity codes
+        colorbyfilter(k, $tr, 0.6);
+        $name[0].innerHTML = load(k, "title"); // jQuery can't handle HTML entity codes
         $cache.text(GM_getValue(k));
       }
       update();
-      function xhr_update(){
-        xhr_get(k, function(data){
-          $extra.text(JSON.stringify(data.manga));
-          update();
-        });
-      }
-      if (update_xhr) xhr_update();
+      if (update_xhr) xhr_get(k, update, 1100, false);
       function togglefilter(){
         save(k, "f", !isfiltered(k));
         update();
@@ -379,11 +358,12 @@ function controlpanel_listcache($table, update_xhr) {
       $cache.click(togglefilter);
       $extra.click(togglefilter);
       $controls.append(
-        $("<a/>", {text: "Update", href: "javascript:;", style: "color:#000"}).click(xhr_update)
+        $("<a/>", {text: "Update", href: "javascript:;", style: "color:#000"}).click(()=>xhr_get(k,update,1100,false))
       ).append(
         $("<a/>", {text: "Remove", href: "javascript:;", style: "color:#000;margin-left:5px"}).click(function(){GM_deleteValue(k);$tr.remove()})
       )
     } else {
+      var $tr = $("<tr/>", {style: "border-bottom:1px solid black"}).appendTo($table);
       $("<td/>", {text: k + ": " + GM_getValue(k), colspan: "9"}).appendTo($tr);
     }
   });
@@ -395,9 +375,33 @@ function controlpanel_listtags($table){
   tagmap(0).forEach(function(v){
     var j = i;
     var $tr = $("<tr/>", {style: "border-bottom: 1px solid black"}).append("<td>" + j + "</td>").append("<td style=\"padding:0 10px 0 20px\">" + v + "</td>");
-    $tr.click(()=>{filtertag(j,!istagfiltered(j));$tr.css("background-color",istagfiltered(j)?"#aa0":"#0a0")});
-    $tr.css("background-color",istagfiltered(j)?"#aa0":"#0a0")
+    $tr.click(()=>{filtertag(j,!istagfiltered(j));$tr.css("background-color",istagfiltered(j)?color_yellow(0.6):color_green(0.6))});
+    $tr.css("background-color",istagfiltered(j)?color_yellow(0.6):color_green(0.6));
     $tr.appendTo($table);
     i += 1;
   });
 }
+
+function controlpanel_langs($table){
+  $table.find("tr").remove();
+  function addlangrow($tr, lang){
+    $("<td/>").append($("<a/>", {text: "Unfilter", href: "javascript:;", style: "color:#000;margin-left:5px"}).click(function(){optarray_setval("FILTERED_LANGS", lang, false); $tr.remove()})).appendTo($tr);
+    $("<td/>", {text: lang, style: "padding:0 20px 0 10px"}).appendTo($tr);
+  }
+  var langs = getoption("FILTERED_LANGS");
+  if (!langs) langs = [];
+  langs.forEach(function(v){
+    addlangrow($("<tr/>").appendTo($table), v);
+  });
+  var $tr = $("<tr/>").appendTo($table);
+  var $td = $("<td/>", {colspan: "2"}).appendTo($tr);
+  var $input = $("<input/>", {type: "text"}).appendTo($td);
+  $("<button/>", {text: "Filter"}).click(function(){
+    var lang = $input.val();
+    optarray_setval("FILTERED_LANGS", lang, true);
+    addlangrow($("<tr/>").insertBefore($tr), lang);
+  }).appendTo($td);
+}
+
+
+
