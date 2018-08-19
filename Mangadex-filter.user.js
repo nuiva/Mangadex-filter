@@ -4,6 +4,7 @@
 // @version 12
 // @match *://mangadex.org/
 // @match *://mangadex.org/updates*
+// @match *://mangadex.org/manga/*
 // @match *://mangadex.org/title/*
 // @require      https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js
 // @require      https://raw.githubusercontent.com/hiddentao/fast-levenshtein/master/levenshtein.js
@@ -293,7 +294,7 @@ function hreftomid(href) {
   return href.match("[0-9]+");
 }
 function midtohref(mid) {
-  return "/manga/" + mid;
+  return "/title/" + mid;
 }
 function midtoapihref(mid) {
   return "/api/manga/" + mid;
