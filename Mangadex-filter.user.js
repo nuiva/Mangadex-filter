@@ -15,6 +15,13 @@
 // @grant        GM_deleteValue
 // ==/UserScript==
 
+{
+  function fill(opt, val){
+    if (typeof load("__OPTIONS", opt) === "undefined")
+      save("__OPTIONS", opt, val);
+  }
+  fill("FILTERED_REGEX", []);
+}
 
 if (window.location.pathname === "/") {
   main_frontpage();
@@ -31,8 +38,17 @@ function main_frontpage() {
     var mid = hreftomid($this.find("a.manga_title").attr("href"));
     colorbyfilter(mid, $this, 0.3);
   }
+  function remove() {
+    var $this = $(this);
+    var mid = hreftomid($this.find("a").attr("href"));
+    if (isfiltered(mid)) {
+      $this.remove();
+    } else {
+      $("<a/>", {text:"Filter", style:"position:absolute;left:60px;bottom:0px", href:"javascript:;"}).click(()=>{filter(mid);$this.remove();}).appendTo($this);
+    }
+  }
   $("div.tab-pane li").each(color);
-  $("div.large_logo div.car-caption").each(color);
+  $("div.owl-carousel div.large_logo").each(remove);
   button = $("<button>Mangadex filter</button>");
   button.click(controlpanel);
   button.appendTo("nav.navbar");
@@ -67,6 +83,9 @@ function main_manga() {
   }
   if (isfiltered_bylang(mid)) {
     $("<a/>", {text: "Filtered by language.", style: "margin-left:30px"}).appendTo($h);
+  }
+  if (isfiltered_byregex(mid)) {
+    $("<a/>", {text: "Filtered by regex.", style: "margin-left:30px"}).appendTo($h);
   }
   var $a = $("<a/>", {style: "margin-left:30px", href: "javascript:;"});
   $h.css("background-image", "none");
@@ -116,6 +135,7 @@ function filterbutton(s,$hide,$target,style) {
 }
 
 function xhr_get(mid, callback, delay = 1100, usecache = true) {
+  //if (usecache && time() - load(mid, "tagschecked") < 2592000000) { // 30 days
   if (usecache && load(mid, "tagschecked")) {
     callback();
   } else {
@@ -132,8 +152,11 @@ function xhr_get(mid, callback, delay = 1100, usecache = true) {
 // List all cache data to console, usable from webconsole for debug
 cache_get = function(filter) {
   var v = GM_listValues().filter(k=>k.match(filter));
-  console.log(v);
+  //console.log(v);
   return v;
+}
+cache_print = function(mid) {
+  return load(mid);
 }
 cache_clear = function(filter){
   var v = cache_get(filter);
@@ -202,7 +225,7 @@ function load(mid, key) {
     }
     return JSON.parse(data)[key];
   }
-  return false;
+  return;
 }
 function optarray_get(option){
   return getoption(option) || [];
@@ -225,20 +248,30 @@ function optarray_setval(option, value, state) {
   }
   setoption(option, v);
 }
-function filtertag(tag, state) {
-  return optarray_setval("TAGS_FILTERED", tag, state);
-}
-function istagfiltered(tag) {
-  return optarray_getval("TAGS_FILTERED", tag);
+function array_removeval(v, x) {
+  let i = v.indexOf(x);
+  if (i !== -1) {
+    v.splice(i,1);
+  }
 }
 function isfiltered(mid){
   return load(mid, "f");
 }
 function isfiltered_bytag(mid){
+  return false; // Use Mangadex options instead
   var tags = load(mid, "tags");
-  var filtered = getoption("TAGS_FILTERED");
-  if (!tags || !filtered) return false;
-  return intersection(tags,filtered).length > 0;
+  var dnf = getoption("FILTERED_TAGS_DNF");
+  if (!mid || !tags || !dnf) return 0;
+  for (let i = 0; i < dnf.length; i++) {
+    let c = dnf[i];
+    let x = true;
+    c[0].forEach(v=>{x &= tags.includes(v);});
+    c[1].forEach(v=>{x &= !tags.includes(v);});
+    if (x) {
+      return true;
+    }
+  }
+  return false;
 }
 function isfiltered_bylang(mid){
   var lang = load(mid, "lang");
@@ -246,8 +279,17 @@ function isfiltered_bylang(mid){
   if (!lang || !filtered) return false;
   return filtered.indexOf(lang) !== -1;
 }
+function isfiltered_byregex(mid){
+  let title = load(mid, "title");
+  let opt = getoption("FILTERED_REGEX");
+  for (let i = 0; i < opt.length; i++) {
+    let re = new RegExp(opt[i]);
+    if (re.test(title)) return true;
+  }
+  return false;
+}
 function isfiltered_general(mid){
-  return isfiltered(mid) || isfiltered_bytag(mid) || isfiltered_bylang(mid);
+  return isfiltered(mid) || isfiltered_bytag(mid) || isfiltered_bylang(mid) || isfiltered_byregex(mid);
 }
 function color_green(opacity = 1){
   return "rgba(0,255,0," + opacity + ")";
@@ -264,7 +306,7 @@ function colorbyfilter(mid, $elem, opacity = 1){
   }
   if (isfiltered(mid)) {
     $elem.css("background-color", color_red(opacity));
-  } else if (isfiltered_bytag(mid) || isfiltered_bylang(mid)) {
+  } else if (isfiltered_bytag(mid) || isfiltered_bylang(mid) || isfiltered_byregex(mid)) {
     $elem.css("background-color", color_yellow(opacity));
   } else {
     $elem.css("background-color", $elem.attr("orig-color"));
@@ -275,6 +317,11 @@ function setoption(option, value) {
 }
 function getoption(option) {
   return load("__OPTIONS", option);
+}
+initoptions = function(){
+  GM_deleteValue("__OPTIONS");
+  save("__OPTIONS", "FILTERED_LANGS", []);
+  save("__OPTIONS", "FILTERED_TAGS_DNF", []);
 }
 cache_text = function() {
   var s = "";
@@ -326,6 +373,7 @@ function controlpanel(){
     $("<button>Show tags</button>").click(()=>controlpanel_listtags(datatable)).appendTo(controldiv);
     $("<button>List cache</button>").click(()=>controlpanel_listcache(datatable, false)).appendTo(controldiv);
     $("<button>Languages</button>").click(()=>controlpanel_langs(datatable)).appendTo(controldiv);
+    $("<button>Regex</button>").click(()=>controlpanel_regexes(datatable)).appendTo(controldiv);
     cache_update = ()=>controlpanel_listcache(datatable, true);
     $("<button>Close</button>").click(()=>controlpanel.div.hide()).appendTo(controldiv);
   }
@@ -371,16 +419,72 @@ function controlpanel_listcache($table, update_xhr) {
 }
 
 function controlpanel_listtags($table){
-  $table.find("tr").remove();
-  var i = 1;
-  tagmap(0).forEach(function(v){
-    var j = i;
-    var $tr = $("<tr/>", {style: "border-bottom: 1px solid black"}).append("<td>" + j + "</td>").append("<td style=\"padding:0 10px 0 20px\">" + v + "</td>");
-    $tr.click(()=>{filtertag(j,!istagfiltered(j));$tr.css("background-color",istagfiltered(j)?color_yellow(0.6):color_green(0.6))});
-    $tr.css("background-color",istagfiltered(j)?color_yellow(0.6):color_green(0.6));
-    $tr.appendTo($table);
-    i += 1;
-  });
+  function rulecomp(a,b){
+    for (let i = 0; i < a[0].length && i < b[0].length; i++) {
+      if (a[0][i] != b[0][i]) return a[0][i] - b[0][i];
+    }
+    if (a[0].length != b[0].length) return a[0].length - b[0].length;
+    for (let i = 0; i < a[1].length && i < b[1].length; i++) {
+      if (a[1][i] != b[1][i]) return a[1][i] - b[1][i];
+    }
+    return a[1].length - b[1].length;
+  }
+  function dnfsort(dnf, comp){
+    dnf.forEach(v=>v.forEach(w=>w.sort((a,b)=>a-b)));
+    return dnf.sort(comp);
+  }
+  function savednf(dnf){
+    setoption("FILTERED_TAGS_DNF", dnf);
+    refresh();
+  }
+  function refresh() {
+    $table.find("tr").remove();
+    let dnf = getoption("FILTERED_TAGS_DNF");
+    let tagrows = tagmap(0).map(function(v,i){
+      let j = i+1;
+      let $tr = $("<tr/>", {style: "border-bottom: 1px solid black"}).append("<td>" + j + "</td>");
+      $("<td/>", {style: "padding: 0 10px 0 20px", text: v}).click(()=>savednf(dnfsort(dnf, (a,b)=>(b[0].includes(j)-a[0].includes(j)) || (b[1].includes(j)-a[1].includes(j)) || rulecomp(a,b)))).appendTo($tr);
+      $tr.appendTo($table);
+      return $tr;
+    });
+    let $control = $("<tr/>").appendTo($table);
+    $("<td/>", {text: "Add rule", colspan: "2"}).click(()=>{dnf.push([[],[]]);savednf(dnf);}).appendTo($control);
+    
+    let descstring = "Filter if ";
+    console.log(dnf);
+    for (let k = 0; k < dnf.length; k++) {
+      let counter = 0;
+      descstring += (k ? " or " : "") + "(";
+      let disj = dnf[k];
+      for (let i = 1; i <= tagrows.length; i++) {
+        let state = 0;
+        if (disj[0].includes(i)) state = 1;
+        else if (disj[1].includes(i)) state = 2;
+        
+        var $td = $("<td/>", {style: "border-right: 1px solid black; width: 80px;"}).appendTo(tagrows[i-1]);
+        if (disj[0].includes(i)) {
+          $td.click(()=>{array_removeval(disj[0],i);disj[1].push(i);savednf(dnf);});
+          $td.css("background-color", color_red(0.6));
+          $td.text("filtered");
+          descstring += (counter++ ? " and " : "") + tagmap(0)[i-1];
+        } else if (disj[1].includes(i)) {
+          $td.click(()=>{array_removeval(disj[1],i);savednf(dnf);});
+          $td.css("background-color", color_green(0.6));
+          $td.text("exception");
+          descstring += (counter++ ? " and " : "") + "not " + tagmap(0)[i-1];
+        } else {
+          $td.click(()=>{disj[0].push(i);savednf(dnf);});
+          $td.css("background-color", color_yellow(0.6));
+          $td.text("ignored");
+        }
+      };
+      descstring += (!counter ? "true" : "") + ")";
+      $("<td/>", {text: "Remove"}).click(()=>{dnf.splice(k,1);savednf(dnf);}).appendTo($control);
+    };
+    $("<tr/>").append("<td colspan=\"2\" title=\"" + descstring + "\">Hover for rules</td>").appendTo($table);
+    $("<tr/>").append("<td colspan=\"2\">Sort</td>").click(()=>savednf(dnfsort(dnf, rulecomp))).appendTo($table);
+  }
+  refresh();
 }
 
 function controlpanel_langs($table){
@@ -390,7 +494,6 @@ function controlpanel_langs($table){
     $("<td/>", {text: lang, style: "padding:0 20px 0 10px"}).appendTo($tr);
   }
   var langs = getoption("FILTERED_LANGS");
-  if (!langs) langs = [];
   langs.forEach(function(v){
     addlangrow($("<tr/>").appendTo($table), v);
   });
@@ -401,6 +504,27 @@ function controlpanel_langs($table){
     var lang = $input.val();
     optarray_setval("FILTERED_LANGS", lang, true);
     addlangrow($("<tr/>").insertBefore($tr), lang);
+  }).appendTo($td);
+}
+
+
+function controlpanel_regexes($table){
+  $table.find("tr").remove();
+  function addlangrow($tr, lang){
+    $("<td/>").append($("<a/>", {text: "Unfilter", href: "javascript:;", style: "color:#000;margin-left:5px"}).click(function(){optarray_setval("FILTERED_REGEX", lang, false); $tr.remove()})).appendTo($tr);
+    $("<td/>", {text: lang, style: "padding:0 20px 0 10px"}).appendTo($tr);
+  }
+  var langs = getoption("FILTERED_REGEX");
+  langs.forEach(function(v){
+    addlangrow($("<tr/>").appendTo($table), v);
+  });
+  var $tr = $("<tr/>").appendTo($table);
+  var $td = $("<td/>", {colspan: "2"}).appendTo($tr);
+  var $input = $("<input/>", {type: "text"}).appendTo($td);
+  $("<button/>", {text: "Filter"}).click(function(){
+    var r = $input.val();
+    optarray_setval("FILTERED_REGEX", r, true);
+    addlangrow($("<tr/>").insertBefore($tr), r);
   }).appendTo($td);
 }
 

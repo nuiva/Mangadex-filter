@@ -1,5 +1,7 @@
 # Mangadex filter
 
+** This script is largely obsolete since Mangadex introduced genre filtering. **
+
 This is a browser userscript that allows manga filtering at Mangadex. Series may be filtered by
 * tags,
 * original language,
