@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 12
+// @version 13
 // @match *://mangadex.org/
 // @match *://mangadex.org/updates*
 // @match *://mangadex.org/manga/*
@@ -39,9 +39,9 @@ function main_frontpage() {
     colorbyfilter(mid, $this, 0.3);
   }
   function remove() {
-    var $this = $(this);
-    var mid = hreftomid($this.find("a").attr("href"));
-    if (isfiltered(mid)) {
+    let $this = $(this);
+    let mid = hreftomid($this.find("a").attr("href"));
+    if (isfiltered_general(mid)) {
       $this.remove();
     } else {
       $("<a/>", {text:"Filter", style:"position:absolute;left:60px;bottom:0px", href:"javascript:;"}).click(()=>{filter(mid);$this.remove();}).appendTo($this);
@@ -258,7 +258,6 @@ function isfiltered(mid){
   return load(mid, "f");
 }
 function isfiltered_bytag(mid){
-  return false; // Use Mangadex options instead
   var tags = load(mid, "tags");
   var dnf = getoption("FILTERED_TAGS_DNF");
   if (!mid || !tags || !dnf) return 0;
@@ -351,7 +350,7 @@ function intersection(a,b) {
 }
 function tagmap(dir) { // dir == 0: index -> name ##  dir == 1: name -> index
   if (typeof tagmap.tagtable === "undefined") {
-    tagmap.tagtable = ["4-Koma", "Action", "Adventure", "Award Winning", "Comedy", "Cooking", "Doujinshi", "Drama", "Ecchi", "Fantasy", "Gender Bender", "Harem", "Historical", "Horror", "Josei", "Martial Arts", "Mecha", "Medical", "Music", "Mystery", "Oneshot", "Psychological", "Romance", "School Life", "Sci-Fi", "Seinen", "Shoujo", "Shoujo Ai", "Shounen", "Shounen Ai", "Slice of Life", "Smut", "Sports", "Supernatural", "Tragedy", "Webtoon", "Yaoi", "Yuri", "[no chapters]", "Game", "Isekai"];
+    tagmap.tagtable = ["4-Koma","Action","Adventure","Award Winning","Comedy","Cooking","Doujinshi","Drama","Ecchi","Fantasy","Gyaru","Harem","Historical","Horror","[no longer used]","Martial Arts","Mecha","Medical","Music","Mystery","Oneshot","Psychological","Romance","School Life","Sci-Fi","[no longer used]","[no longer used]","Shoujo Ai","[no longer used]","Shounen Ai","Slice of Life","Smut","Sports","Supernatural","Tragedy","Long Strip","Yaoi","Yuri","[no longer used]","Video Games","Isekai","Adaptation","Anthology","Web Comic","Full Color","User Created","Official Colored","Fan Colored","Gore","Sexual Violence","Crime","Magical Girls","Philosophical","Superhero","Thriller","Wuxia","Aliens","Animals","Crossdressing","Demons","Delinquents","Genderswap","Ghosts","Monster Girls","Loli","Magic","Military","Monsters","Ninja","Office Workers","Police","Post-Apocalyptic","Reincarnation","Reverse Harem","Samurai","Shota","Survival","Time Travel","Vampires","Traditional Games","Virtual Reality","Zombies","Incest"];
     tagmap.tagdict = {};
     tagmap.tagtable.forEach((v,i)=>tagmap.tagdict[v]=i+1);
   }
@@ -440,6 +439,7 @@ function controlpanel_listtags($table){
   function refresh() {
     $table.find("tr").remove();
     let dnf = getoption("FILTERED_TAGS_DNF");
+    if (!dnf) dnf = [];
     let tagrows = tagmap(0).map(function(v,i){
       let j = i+1;
       let $tr = $("<tr/>", {style: "border-bottom: 1px solid black"}).append("<td>" + j + "</td>");
@@ -528,5 +528,46 @@ function controlpanel_regexes($table){
   }).appendTo($td);
 }
 
+
+function proxysearch(urlprefix, names, callback, nthname = 0) {
+  if (nthname >= names.length && nthname > 0) {
+    return;
+  }
+  var xhttp = new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+    if (this.readyState == 4 && this.status == 200) {
+      if (xhttp.responseText) {
+        callback(xhttp.responseText);
+      } else {
+        proxysearch(urlprefix, names, callback, nthname + 1);
+      }
+    }
+  };
+  xhttp.open("GET", "https://two-d.faith/close/proxy/" + urlprefix + encodeURI(names[nthname]), true);
+  xhttp.send();
+}
+function pushuniq(array, val) {
+  if (!array.includes(val)) {
+    array.push(val);
+  }
+  return array;
+}
+function filter_manganame(name) {
+  proxysearch("mangadex_search.php?n=", pushuniq([name], name.replace(/ ?(\(.+\)|\.)$/,'')), function(id){
+    xhr_get(id, function(){
+      filter(id);
+    });
+  });
+}
+
+filter_list = function(s){
+  var strings = s.split(/\r?\n/);
+  var i = 0;
+  setInterval(function(){
+    if (i == strings.length) return;
+    filter_manganame(strings[i]);
+    i += 1;
+  }, 1100);
+}
 
 
