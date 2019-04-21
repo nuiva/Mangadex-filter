@@ -70,8 +70,12 @@ function main_manga() {
   var title = textcontent($("h6.card-header")).trim();
   var tags = [];
   var tagdict = tagmap(1);
-  $("a.genre").each(function(){
-    tags.push(tagdict[$(this).text()]);
+  $("a.badge.badge-secondary").each(function(){
+    let m = $(this).attr("href").match(/^\/genre\/([0-9]+)$/);
+    if (m) {
+      tags.push(parseInt(m[1]));
+    }
+    
   });
   var lang = $h.find("img.flag").attr("title");
   save(mid, "title", title);
