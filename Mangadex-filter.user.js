@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 13
+// @version 14
 // @match *://mangadex.org/
 // @match *://mangadex.org/updates*
 // @match *://mangadex.org/manga/*
@@ -32,6 +32,7 @@ if (window.location.pathname === "/") {
 }
 
 function main_frontpage() {
+  $('head').append('<style type="text/css">.link:hover {cursor: pointer; text-decoration: underline}</style>'); // Clickable-looking links without dummy href, used for controlpanel
   $("#latest_update div.col-md-6").each(frontpage_processmanga);
   function color() {
     var $this = $(this);
@@ -70,7 +71,7 @@ function main_manga() {
   var title = textcontent($("h6.card-header")).trim();
   var tags = [];
   var tagdict = tagmap(1);
-  $("a.badge.badge-secondary").each(function(){
+  $("a.badge").each(function(){
     let m = $(this).attr("href").match(/^\/genre\/([0-9]+)$/);
     if (m) {
       tags.push(parseInt(m[1]));
@@ -438,7 +439,7 @@ function controlpanel_listtags($table){
   }
   function savednf(dnf){
     setoption("FILTERED_TAGS_DNF", dnf);
-    refresh();
+    //refresh();
   }
   function refresh() {
     $table.find("tr").remove();
@@ -447,12 +448,12 @@ function controlpanel_listtags($table){
     let tagrows = tagmap(0).map(function(v,i){
       let j = i+1;
       let $tr = $("<tr/>", {style: "border-bottom: 1px solid black"}).append("<td>" + j + "</td>");
-      $("<td/>", {style: "padding: 0 10px 0 20px", text: v}).click(()=>savednf(dnfsort(dnf, (a,b)=>(b[0].includes(j)-a[0].includes(j)) || (b[1].includes(j)-a[1].includes(j)) || rulecomp(a,b)))).appendTo($tr);
+      $("<td/>", {class: "link", style: "padding: 0 10px 0 20px; border-right: 1px solid black;", text: v}).click(()=>{savednf(dnfsort(dnf, (a,b)=>(b[0].includes(j)-a[0].includes(j)) || (b[1].includes(j)-a[1].includes(j)) || rulecomp(a,b))); refresh();}).appendTo($tr);
       $tr.appendTo($table);
       return $tr;
     });
     let $control = $("<tr/>").appendTo($table);
-    $("<td/>", {text: "Add rule", colspan: "2"}).click(()=>{dnf.push([[],[]]);savednf(dnf);}).appendTo($control);
+    $("<td/>", {class: "link", text: "Add rule", colspan: "2"}).click(()=>{dnf.push([[],[]]);savednf(dnf);refresh();}).appendTo($control);
     
     let descstring = "Filter if ";
     console.log(dnf);
@@ -465,28 +466,39 @@ function controlpanel_listtags($table){
         if (disj[0].includes(i)) state = 1;
         else if (disj[1].includes(i)) state = 2;
         
-        var $td = $("<td/>", {style: "border-right: 1px solid black; width: 80px;"}).appendTo(tagrows[i-1]);
-        if (disj[0].includes(i)) {
-          $td.click(()=>{array_removeval(disj[0],i);disj[1].push(i);savednf(dnf);});
-          $td.css("background-color", color_red(0.6));
-          $td.text("filtered");
-          descstring += (counter++ ? " and " : "") + tagmap(0)[i-1];
-        } else if (disj[1].includes(i)) {
-          $td.click(()=>{array_removeval(disj[1],i);savednf(dnf);});
-          $td.css("background-color", color_green(0.6));
-          $td.text("exception");
-          descstring += (counter++ ? " and " : "") + "not " + tagmap(0)[i-1];
-        } else {
-          $td.click(()=>{disj[0].push(i);savednf(dnf);});
-          $td.css("background-color", color_yellow(0.6));
-          $td.text("ignored");
+        let $td = $("<td/>", {class: "link", align: "center", style: "user-select: none; border-right: 1px solid black; width: 80px;"}).appendTo(tagrows[i-1]);
+        $td.css("user-select", "none");
+        function updatecell() {
+          if (disj[0].includes(i)) {
+            $td.css("background-color", color_red(0.6));
+            $td.text("filtered");
+          } else if (disj[1].includes(i)) {
+            $td.css("background-color", color_green(0.6));
+            $td.text("exception");
+          } else {
+            $td.css("background-color", color_yellow(0.6));
+            $td.text("ignored");
+          }
         }
+        updatecell();
+        $td.click(function(){
+          if (disj[0].includes(i)) {
+            array_removeval(disj[0],i);
+            disj[1].push(i);
+          } else if (disj[1].includes(i)) {
+            array_removeval(disj[1],i);
+          } else {
+            disj[0].push(i);
+          }
+          savednf(dnf);
+          updatecell();
+        });
       };
       descstring += (!counter ? "true" : "") + ")";
-      $("<td/>", {text: "Remove"}).click(()=>{dnf.splice(k,1);savednf(dnf);}).appendTo($control);
+      $("<td/>", {class: "link", text: "Remove", align: "center"}).click(()=>{dnf.splice(k,1);savednf(dnf);refresh();}).appendTo($control);
     };
     $("<tr/>").append("<td colspan=\"2\" title=\"" + descstring + "\">Hover for rules</td>").appendTo($table);
-    $("<tr/>").append("<td colspan=\"2\">Sort</td>").click(()=>savednf(dnfsort(dnf, rulecomp))).appendTo($table);
+    $("<tr/>").append("<td colspan=\"2\" class=\"link\">Sort</td>").click(()=>{savednf(dnfsort(dnf, rulecomp)); refresh();}).appendTo($table);
   }
   refresh();
 }
