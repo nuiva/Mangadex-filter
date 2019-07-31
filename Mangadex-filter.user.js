@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 14
+// @version 15
 // @match *://mangadex.org/
 // @match *://mangadex.org/updates*
 // @match *://mangadex.org/manga/*
@@ -14,6 +14,41 @@
 // @grant        GM_listValues
 // @grant        GM_deleteValue
 // ==/UserScript==
+
+MangadexFilter = new Object();
+
+MangadexFilter.dashboard = function(){
+  if (typeof(MangadexFilter.dashboard.body) === "undefined") {
+    let b = document.createElement("body");
+    b.id = "dashboard";
+    b.style.margin = "0";
+    
+    let $div = $("<div/>", {style: "position:fixed;top:0;left:0;width:100%;height:100%;z-index:10000;background-color:#fff;color:#000"});
+    $div.appendTo(b);
+    let controldiv = $("<div/>", {style: "border: 2px solid black;height:30px;overflow:auto"})
+    controldiv.appendTo($div);
+    let datatable = $("<table/>", {style: "display: block; overflow: auto; white-space: nowrap; position:absolute;bottom:0;left:0;top:30px;width:100%;background-color:#fff"});
+    datatable.appendTo($div);
+    $("<button>Show tags</button>").click(()=>controlpanel_listtags(datatable)).appendTo(controldiv);
+    $("<button>List cache</button>").click(()=>controlpanel_listcache(datatable, false)).appendTo(controldiv);
+    $("<button>Languages</button>").click(()=>controlpanel_langs(datatable)).appendTo(controldiv);
+    $("<button>Regex</button>").click(()=>controlpanel_regexes(datatable)).appendTo(controldiv);
+    cache_update = ()=>controlpanel_listcache(datatable, true);
+    $("<button>", {text: "Close", onclick: "MangadexFilter.dashboard()"}).appendTo(controldiv);
+    
+    MangadexFilter.dashboard.body = b;
+    
+    let style = document.createElement("style");
+    style.type = "text/css";
+    style.textContent = "#dashboard .cache tr {border-bottom:1px solid black} #dashboard .cache td {padding-left:10px} #dashboard .link:hover, #dashboard a:hover {cursor: pointer; text-decoration: underline}";
+    document.head.appendChild(style);
+  }
+  let temp = document.body;
+  let html = temp.parentNode;
+  html.removeChild(temp);
+  html.appendChild(MangadexFilter.dashboard.body);
+  MangadexFilter.dashboard.body = temp;
+};
 
 {
   function fill(opt, val){
@@ -32,7 +67,6 @@ if (window.location.pathname === "/") {
 }
 
 function main_frontpage() {
-  $('head').append('<style type="text/css">.link:hover {cursor: pointer; text-decoration: underline}</style>'); // Clickable-looking links without dummy href, used for controlpanel
   $("#latest_update div.col-md-6").each(frontpage_processmanga);
   function color() {
     var $this = $(this);
@@ -50,9 +84,10 @@ function main_frontpage() {
   }
   $("div.tab-pane li").each(color);
   $("div.owl-carousel div.large_logo").each(remove);
-  button = $("<button>Mangadex filter</button>");
-  button.click(controlpanel);
-  button.appendTo("nav.navbar");
+  let button = document.createElement("button");
+  button.textContent = "Mangadex filter";
+  button.setAttribute("onclick", "MangadexFilter.dashboard()");
+  document.querySelector("nav.navbar").appendChild(button);
 }
 function frontpage_processmanga() {
   var $this = $(this);
@@ -68,7 +103,7 @@ function frontpage_processmanga() {
 function main_manga() {
   var $h = $("h6.card-header").first();
   var mid = hreftomid(window.location.pathname);
-  var title = textcontent($("h6.card-header")).trim();
+  var title = $("h6.card-header").text().trim();
   var tags = [];
   var tagdict = tagmap(1);
   $("a.badge").each(function(){
@@ -78,7 +113,7 @@ function main_manga() {
     }
     
   });
-  var lang = $h.find("img.flag").attr("title");
+  var lang = $h.find("span.flag").attr("title");
   save(mid, "title", title);
   save(mid, "tags", tags);
   save(mid, "tagschecked", time());
@@ -155,16 +190,16 @@ function xhr_get(mid, callback, delay = 1100, usecache = true) {
 }
 
 // List all cache data to console, usable from webconsole for debug
-cache_get = function(filter) {
+MangadexFilter.cache_get = function(filter) {
   var v = GM_listValues().filter(k=>k.match(filter));
   //console.log(v);
   return v;
 }
-cache_print = function(mid) {
+MangadexFilter.cache_print = function(mid) {
   return load(mid);
 }
-cache_clear = function(filter){
-  var v = cache_get(filter);
+MangadexFilter.cache_clear = function(filter){
+  var v = MangadexFilter.cache_get(filter);
   if (confirm("Specific entries shown in log.\nClear cache?")) {
     v.forEach(GM_deleteValue);
   }
@@ -316,23 +351,29 @@ function colorbyfilter(mid, $elem, opacity = 1){
     $elem.css("background-color", $elem.attr("orig-color"));
   }
 }
+function filterstatus(mid){
+  if (isfiltered(mid)) {
+    return 2;
+  } else if (isfiltered_bytag(mid) || isfiltered_bylang(mid) || isfiltered_byregex(mid)) {
+    return 1;
+  }
+  return 0;
+}
+function filtercolorstring(mid, opacity = 1){
+  const a = ["0,255,0","255,255,25","255,0,0"];
+  return `rgba(${a[filterstatus(mid)]},${opacity})`;
+}
 function setoption(option, value) {
   return save("__OPTIONS", option, value);
 }
 function getoption(option) {
   return load("__OPTIONS", option);
 }
-initoptions = function(){
+MangadexFilter.initoptions = function(){
   GM_deleteValue("__OPTIONS");
   save("__OPTIONS", "FILTERED_LANGS", []);
   save("__OPTIONS", "FILTERED_TAGS_DNF", []);
-}
-cache_text = function() {
-  var s = "";
-  GM_listValues().forEach(function(k){
-    s += k + "\n";
-  });
-  console.log(s);
+  save("__OPTIONS", "FILTERED_REGEX", []);
 }
 
 function textcontent($x) {
@@ -365,64 +406,48 @@ function tagmap(dir) { // dir == 0: index -> name ##  dir == 1: name -> index
   return tagmap.tagtable;
 }
 
-cache_update = ()=>console.log("Need to open control panel.");
-function controlpanel(){
-  if (typeof controlpanel.div === "undefined") {
-    controlpanel.div = $("<div/>", {style: "position:fixed;top:0;left:0;width:100%;height:100%;z-index:10000;background-color:#fff;color:#000"});
-    controlpanel.div.appendTo("body");
-    var controldiv = $("<div/>", {style: "border: 2px solid black;height:30px;overflow:auto"})
-    controldiv.appendTo(controlpanel.div);
-    var datatable = $("<table/>", {style: "display: block; overflow: auto; white-space: nowrap; position:absolute;bottom:0;left:0;top:30px;width:100%;background-color:#fff"});
-    datatable.appendTo(controlpanel.div);
-    $("<button>Show tags</button>").click(()=>controlpanel_listtags(datatable)).appendTo(controldiv);
-    $("<button>List cache</button>").click(()=>controlpanel_listcache(datatable, false)).appendTo(controldiv);
-    $("<button>Languages</button>").click(()=>controlpanel_langs(datatable)).appendTo(controldiv);
-    $("<button>Regex</button>").click(()=>controlpanel_regexes(datatable)).appendTo(controldiv);
-    cache_update = ()=>controlpanel_listcache(datatable, true);
-    $("<button>Close</button>").click(()=>controlpanel.div.hide()).appendTo(controldiv);
-  }
-  controlpanel.div.show();
-  return controlpanel.div;
+MangadexFilter.dashboard_filtertoggle = function(elem, mid){
+  let tr = elem.parentNode;
+  save(mid, "f", !isfiltered(mid));
+  colorbyfilter(mid, $(tr), 0.6);
+  tr.children[3].textContent = GM_getValue(mid);
+}
+MangadexFilter.dashboard_cache_update = function(elem,mid) {
+  let tr = elem.parentNode.parentNode;
+  xhr_get(mid, function(){
+    colorbyfilter(mid, $(tr), 0.6);
+    let c = tr.children;
+    c[2].textContent = load(mid, "title");
+    c[3].textContent = GM_getValue(mid);
+  }, 1100, false);
+}
+MangadexFilter.dashboard_cache_remove = function(elem,mid){
+  let tr = elem.parentNode.parentNode;
+  GM_deleteValue(mid);
+  tr.parentNode.removeChild(tr);
 }
 
-function controlpanel_listcache($table, update_xhr) {
-  $table.find("tr").remove();
-  GM_listValues().forEach(function(k){
+function controlpanel_listcache($table) {
+  $table.html("");
+  $table.attr("class", "cache");
+  let t = (new Date).getTime();
+  let v = GM_listValues();
+  let i = v.length;
+  let s = "";
+  while (--i >= 0) {
+    let k = v[i];
     if (k !== "__OPTIONS") {
-      var $tr = $("<tr/>", {style: "border-bottom:1px solid black"}).appendTo($table);
-      $("<td/>", {style: "padding-left:10px"}).appendTo($tr).append($("<a/>", {text: k, href: midtohref(k), style: "color: #00c"}));
-      var $controls = $("<td/>", {style: "padding-left:10px"}).appendTo($tr);
-      var $name = $("<td/>", {style: "padding-left:10px"}).appendTo($tr);
-      var $cache = $("<td/>", {style: "padding-left:10px"}).appendTo($tr);
-      var $extra = $("<td/>", {style: "padding-left:10px"}).appendTo($tr);
-      $tr.css("background-color", color_green(0.6));
-      function update() {
-        colorbyfilter(k, $tr, 0.6);
-        $name[0].innerHTML = load(k, "title"); // jQuery can't handle HTML entity codes
-        $cache.text(GM_getValue(k));
-      }
-      update();
-      if (update_xhr) xhr_get(k, update, 1100, false);
-      function togglefilter(){
-        save(k, "f", !isfiltered(k));
-        update();
-      }
-      $name.click(togglefilter);
-      $cache.click(togglefilter);
-      $extra.click(togglefilter);
-      $controls.append(
-        $("<a/>", {text: "Update", href: "javascript:;", style: "color:#000"}).click(()=>xhr_get(k,update,1100,false))
-      ).append(
-        $("<a/>", {text: "Remove", href: "javascript:;", style: "color:#000;margin-left:5px"}).click(function(){GM_deleteValue(k);$tr.remove()})
-      )
+      s += `<tr style="background-color:${filtercolorstring(k,0.6)}"><td><a href="${midtohref(k)}" style="color:#00c">${k}</a></td><td><a onclick="MangadexFilter.dashboard_cache_update(this,${k})" style="color:#000">Update</a><a onclick="MangadexFilter.dashboard_cache_remove(this,${k})" style="color:#000">Remove</a></td><td>${load(k,"title")}</td><td>${GM_getValue(k)}</td></tr>`;
     } else {
-      var $tr = $("<tr/>", {style: "border-bottom:1px solid black"}).appendTo($table);
-      $("<td/>", {text: k + ": " + GM_getValue(k), colspan: "9"}).appendTo($tr);
+      s += `<tr><td colspan="9">${GM_getValue(k)}</td></tr>`;
     }
-  });
+  }
+  $table.html(s);
+  console.log("Listed cache in " + ((new Date).getTime() - t) / 1000 + " seconds.");
 }
 
 function controlpanel_listtags($table){
+  $table.attr("class","tags");
   function rulecomp(a,b){
     for (let i = 0; i < a[0].length && i < b[0].length; i++) {
       if (a[0][i] != b[0][i]) return a[0][i] - b[0][i];
@@ -439,10 +464,9 @@ function controlpanel_listtags($table){
   }
   function savednf(dnf){
     setoption("FILTERED_TAGS_DNF", dnf);
-    //refresh();
   }
   function refresh() {
-    $table.find("tr").remove();
+    $table.html("");
     let dnf = getoption("FILTERED_TAGS_DNF");
     if (!dnf) dnf = [];
     let tagrows = tagmap(0).map(function(v,i){
@@ -458,8 +482,6 @@ function controlpanel_listtags($table){
     let descstring = "Filter if ";
     console.log(dnf);
     for (let k = 0; k < dnf.length; k++) {
-      let counter = 0;
-      descstring += (k ? " or " : "") + "(";
       let disj = dnf[k];
       for (let i = 1; i <= tagrows.length; i++) {
         let state = 0;
@@ -494,17 +516,16 @@ function controlpanel_listtags($table){
           updatecell();
         });
       };
-      descstring += (!counter ? "true" : "") + ")";
       $("<td/>", {class: "link", text: "Remove", align: "center"}).click(()=>{dnf.splice(k,1);savednf(dnf);refresh();}).appendTo($control);
     };
-    $("<tr/>").append("<td colspan=\"2\" title=\"" + descstring + "\">Hover for rules</td>").appendTo($table);
     $("<tr/>").append("<td colspan=\"2\" class=\"link\">Sort</td>").click(()=>{savednf(dnfsort(dnf, rulecomp)); refresh();}).appendTo($table);
   }
   refresh();
 }
 
 function controlpanel_langs($table){
-  $table.find("tr").remove();
+  $table.html("");
+  $table.attr("class","langs");
   function addlangrow($tr, lang){
     $("<td/>").append($("<a/>", {text: "Unfilter", href: "javascript:;", style: "color:#000;margin-left:5px"}).click(function(){optarray_setval("FILTERED_LANGS", lang, false); $tr.remove()})).appendTo($tr);
     $("<td/>", {text: lang, style: "padding:0 20px 0 10px"}).appendTo($tr);
@@ -525,7 +546,8 @@ function controlpanel_langs($table){
 
 
 function controlpanel_regexes($table){
-  $table.find("tr").remove();
+  $table.html("");
+  $table.attr("class","regexes");
   function addlangrow($tr, lang){
     $("<td/>").append($("<a/>", {text: "Unfilter", href: "javascript:;", style: "color:#000;margin-left:5px"}).click(function(){optarray_setval("FILTERED_REGEX", lang, false); $tr.remove()})).appendTo($tr);
     $("<td/>", {text: lang, style: "padding:0 20px 0 10px"}).appendTo($tr);
@@ -542,48 +564,6 @@ function controlpanel_regexes($table){
     optarray_setval("FILTERED_REGEX", r, true);
     addlangrow($("<tr/>").insertBefore($tr), r);
   }).appendTo($td);
-}
-
-
-function proxysearch(urlprefix, names, callback, nthname = 0) {
-  if (nthname >= names.length && nthname > 0) {
-    return;
-  }
-  var xhttp = new XMLHttpRequest();
-  xhttp.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) {
-      if (xhttp.responseText) {
-        callback(xhttp.responseText);
-      } else {
-        proxysearch(urlprefix, names, callback, nthname + 1);
-      }
-    }
-  };
-  xhttp.open("GET", "https://two-d.faith/close/proxy/" + urlprefix + encodeURI(names[nthname]), true);
-  xhttp.send();
-}
-function pushuniq(array, val) {
-  if (!array.includes(val)) {
-    array.push(val);
-  }
-  return array;
-}
-function filter_manganame(name) {
-  proxysearch("mangadex_search.php?n=", pushuniq([name], name.replace(/ ?(\(.+\)|\.)$/,'')), function(id){
-    xhr_get(id, function(){
-      filter(id);
-    });
-  });
-}
-
-filter_list = function(s){
-  var strings = s.split(/\r?\n/);
-  var i = 0;
-  setInterval(function(){
-    if (i == strings.length) return;
-    filter_manganame(strings[i]);
-    i += 1;
-  }, 1100);
 }
 
 
