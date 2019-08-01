@@ -437,7 +437,7 @@ function controlpanel_listcache($table) {
   while (--i >= 0) {
     let k = v[i];
     if (k !== "__OPTIONS") {
-      s += `<tr style="background-color:${filtercolorstring(k,0.6)}"><td><a href="${midtohref(k)}" style="color:#00c">${k}</a></td><td><a onclick="MangadexFilter.dashboard_cache_update(this,${k})" style="color:#000">Update</a><a onclick="MangadexFilter.dashboard_cache_remove(this,${k})" style="color:#000">Remove</a></td><td>${load(k,"title")}</td><td>${GM_getValue(k)}</td></tr>`;
+      s += `<tr style="background-color:${filtercolorstring(k,0.6)}"><td><a href="${midtohref(k)}" style="color:#00c">${k}</a></td><td><a onclick="MangadexFilter.dashboard_cache_update(this,${k})" style="color:#000">Update</a><a onclick="MangadexFilter.dashboard_cache_remove(this,${k})" style="color:#000">Remove</a></td><td onclick="MangadexFilter.dashboard_filtertoggle(this,${k})">${load(k,"title")}</td><td onclick="MangadexFilter.dashboard_filtertoggle(this,${k})">${GM_getValue(k)}</td></tr>`;
     } else {
       s += `<tr><td colspan="9">${GM_getValue(k)}</td></tr>`;
     }
