@@ -40,7 +40,7 @@ MangadexFilter.dashboard = function(){
     
     let style = document.createElement("style");
     style.type = "text/css";
-    style.textContent = "#dashboard .cache tr {border-bottom:1px solid black} #dashboard .cache td {padding-left:10px} #dashboard .link:hover, #dashboard a:hover {cursor: pointer; text-decoration: underline}";
+    style.textContent = "#dashboard .cache tr {border-bottom:1px solid black} #dashboard .cache td {padding-left:10px} #dashboard .cache a {margin-right: 3px} #dashboard .link:hover, #dashboard a:hover {cursor: pointer; text-decoration: underline}";
     document.head.appendChild(style);
   }
   let temp = document.body;
@@ -406,10 +406,10 @@ function tagmap(dir) { // dir == 0: index -> name ##  dir == 1: name -> index
   return tagmap.tagtable;
 }
 
-MangadexFilter.dashboard_filtertoggle = function(elem, mid){
-  let tr = elem.parentNode;
+MangadexFilter.dashboard_cache_filter = function(elem, mid){
+  let tr = elem.parentNode.parentNode;
   save(mid, "f", !isfiltered(mid));
-  colorbyfilter(mid, $(tr), 0.6);
+  tr.style.backgroundColor = filtercolorstring(mid,0.6);
   tr.children[3].textContent = GM_getValue(mid);
 }
 MangadexFilter.dashboard_cache_update = function(elem,mid) {
@@ -437,7 +437,7 @@ function controlpanel_listcache($table) {
   while (--i >= 0) {
     let k = v[i];
     if (k !== "__OPTIONS") {
-      s += `<tr style="background-color:${filtercolorstring(k,0.6)}"><td><a href="${midtohref(k)}" style="color:#00c">${k}</a></td><td><a onclick="MangadexFilter.dashboard_cache_update(this,${k})" style="color:#000">Update</a><a onclick="MangadexFilter.dashboard_cache_remove(this,${k})" style="color:#000">Remove</a></td><td onclick="MangadexFilter.dashboard_filtertoggle(this,${k})">${load(k,"title")}</td><td onclick="MangadexFilter.dashboard_filtertoggle(this,${k})">${GM_getValue(k)}</td></tr>`;
+      s += `<tr style="background-color:${filtercolorstring(k,0.6)}"><td><a href="${midtohref(k)}" style="color:#00c">${k}</a></td><td style="-webkit-user-select:none"><a onclick="MangadexFilter.dashboard_cache_filter(this,${k})">Filter</a><a onclick="MangadexFilter.dashboard_cache_update(this,${k})">Update</a><a onclick="MangadexFilter.dashboard_cache_remove(this,${k})">Remove</a></td><td>${load(k,"title")}</td><td>${GM_getValue(k)}</td></tr>`;
     } else {
       s += `<tr><td colspan="9">${GM_getValue(k)}</td></tr>`;
     }
