@@ -1,11 +1,8 @@
 // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 15
-// @match *://mangadex.org/
-// @match *://mangadex.org/updates*
-// @match *://mangadex.org/manga/*
-// @match *://mangadex.org/title/*
+// @version 16
+// @match *://mangadex.org/*
 // @require      https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js
 // @require      https://raw.githubusercontent.com/hiddentao/fast-levenshtein/master/levenshtein.js
 // @require https://raw.githubusercontent.com/mathiasbynens/he/master/he.js
@@ -15,8 +12,113 @@
 // @grant        GM_deleteValue
 // ==/UserScript==
 
+function mutex_exec(callback, retry = 0) {
+  let id = Math.random();
+  localStorage.MDFilterMutexA = id;
+  if (typeof localStorage.MDFilterMutexB === "undefined" || retry >= 10) {
+    localStorage.MDFilterMutexB = id;
+    if (localStorage.MDFilterMutexA == id) {
+      callback();
+      delete localStorage.MDFilterMutexB;
+    } else {
+      setTimeout(function(){
+        if (localStorage.MDFilterMutexB == id) {
+          callback();
+          delete localStorage.MDFilterMutexB;
+        } else {
+          setTimeout(()=>mutex_exec(callback, retry+1), 100);
+        }
+      }, 10);
+    }
+  } else {
+    setTimeout(()=>mutex_exec(callback, retry+1), 100);
+  }
+};
+
+// Request queueing and caching
+function removeoldrequests(v,t) {
+  let i = 0;
+  while (i < v.length && v[i][0] + 660000 < t) i += 1;
+  if (i) v.splice(0,i);
+  return i;
+}
+function registerrequest(url, optionname) {
+  let key = "MDFilter" + optionname;
+  mutex_exec(function(){
+    let v = JSON.parse(localStorage[key] || "[]");
+    let t = new Date().getTime();
+    removeoldrequests(v,t);
+    v.push([t, url]);
+    localStorage[key] = JSON.stringify(v);
+    console.log("Saved request " + url, v.slice());
+  });
+}
+let RequestQueue = new Object();
+RequestQueue.queue = [];
+// Only use for API requests!!
+RequestQueue.push = function(url, callback){
+  this.queue.push([url, callback]);
+  if (this.queue.length == 1) this.process();
+}
+RequestQueue.process = function(){
+  const expiretime = 660000; // 11 minutes
+  const maxrequests = 1400;
+  let t = new Date().getTime();
+  let v = JSON.parse(localStorage.MDFilterAPIREQUESTCACHE || "[]");
+  removeoldrequests(v,t);
+  let room = maxrequests - v.length;
+  if (room > 0) {
+    let a = this.queue.splice(0,room);
+    for (let i = 0, j = a.length; i < j; ++i) {
+      $.get(a[i][0], a[i][1]); // Registered to APIREQUESTCACHE by XHR hook
+    }
+    if (this.queue.length > 0) {
+      setTimeout(this.process, v[0][0] + expiretime - t);
+    }
+  } else {
+    setTimeout(this.process, v[0][0] + expiretime - t);
+  }
+}
+function enableXHRcapture(){
+  function registerurl(url){
+    if (url.match("/api/")) {
+      registerrequest(url, "APIREQUESTCACHE");
+    } else {
+      registerrequest(url, "USERREQUESTCACHE");
+    }
+  }
+  let oldXHRopen = XMLHttpRequest.prototype.open;
+  let oldfetch = fetch;
+  unsafeWindow.XMLHttpRequest.prototype.open = function (method, url, async, user, password) {
+    registerurl(url);
+    return oldXHRopen.apply(this, arguments);
+  }
+  unsafeWindow.fetch = function(url){
+    registerurl(url.href);
+    return oldfetch.apply(this,arguments);
+  }
+  console.log("MangadexFilter: hooked to XHR requests.");
+}
+function xhr_get(mid, callback, usecache = true) {
+  //if (usecache && time() - load(mid, "tagschecked") < 2592000000) { // 30 days
+  if (usecache && load(mid, "tagschecked")) {
+    callback();
+  } else {
+    RequestQueue.push(midtoapihref(mid), function(data){
+      save(mid, "title", data.manga.title);
+      save(mid, "tags", data.manga.genres);
+      save(mid, "tagschecked", time());
+      save(mid, "lang", data.manga.lang_name);
+      callback();
+    });
+  }
+}
+
+
+// Namespace for exposed functions
 MangadexFilter = new Object();
 
+// Dashboard setup
 MangadexFilter.dashboard = function(){
   if (typeof(MangadexFilter.dashboard.body) === "undefined") {
     let b = document.createElement("body");
@@ -33,6 +135,7 @@ MangadexFilter.dashboard = function(){
     $("<button>List cache</button>").click(()=>controlpanel_listcache(datatable, false)).appendTo(controldiv);
     $("<button>Languages</button>").click(()=>controlpanel_langs(datatable)).appendTo(controldiv);
     $("<button>Regex</button>").click(()=>controlpanel_regexes(datatable)).appendTo(controldiv);
+    $("<button>Requests</button>").click(()=>controlpanel_requestcache(datatable)).appendTo(controldiv);
     cache_update = ()=>controlpanel_listcache(datatable, true);
     $("<button>", {text: "Close", onclick: "MangadexFilter.dashboard()"}).appendTo(controldiv);
     
@@ -40,7 +143,7 @@ MangadexFilter.dashboard = function(){
     
     let style = document.createElement("style");
     style.type = "text/css";
-    style.textContent = "#dashboard .cache tr {border-bottom:1px solid black} #dashboard .cache td {padding-left:10px} #dashboard .cache a {margin-right: 3px} #dashboard .link:hover, #dashboard a:hover {cursor: pointer; text-decoration: underline}";
+    style.innerHTML = "#dashboard .cache tr {border-bottom:1px solid black} #dashboard .cache td {padding-left:10px} #dashboard .cache a {margin-right: 3px} #dashboard .link:hover, #dashboard a:hover {cursor: pointer; text-decoration: underline} #dashboard .requests td {padding:0 10px 0 10px;border:1px solid black} #dashboard .requests .blank {border:none} #dashboard .requests a {color:#000}";
     document.head.appendChild(style);
   }
   let temp = document.body;
@@ -58,12 +161,16 @@ MangadexFilter.dashboard = function(){
   fill("FILTERED_REGEX", []);
 }
 
+enableXHRcapture();
+registerrequest(window.location.href, "USERREQUESTCACHE");
 if (window.location.pathname === "/") {
   main_frontpage();
-} else if (window.location.pathname.match("/updates")) {
+} else if (window.location.pathname.match("^/updates")) {
   main_updates();
-} else {
+} else if (window.location.pathname.match("^/(?:manga|title)/")) {
   main_manga();
+} else if (window.location.pathname.match("^/chapter/")) {
+  registerrequest("_assumed miss at " + window.location.pathname, "APIREQUESTCACHE");
 }
 
 function main_frontpage() {
@@ -78,14 +185,12 @@ function main_frontpage() {
     let mid = hreftomid($this.find("a").attr("href"));
     if (isfiltered_general(mid)) {
       $this.remove();
-    } else {
-      $("<a/>", {text:"Filter", style:"position:absolute;left:60px;bottom:0px", href:"javascript:;"}).click(()=>{filter(mid);$this.remove();}).appendTo($this);
     }
   }
   $("div.tab-pane li").each(color);
   $("div.owl-carousel div.large_logo").each(remove);
   let button = document.createElement("button");
-  button.textContent = "Mangadex filter";
+  button.innerHTML = "Mangadex filter";
   button.setAttribute("onclick", "MangadexFilter.dashboard()");
   document.querySelector("nav.navbar").appendChild(button);
 }
@@ -96,14 +201,14 @@ function frontpage_processmanga() {
   var mid = hreftomid(href);
   xhr_get(mid, function(){
     if (isfiltered_general(mid)) $this.hide();
-  }, 200);
+  });
   filterbutton(mid, $this, $this, "position:absolute;right:0;bottom:0");
 }
 
 function main_manga() {
   var $h = $("h6.card-header").first();
   var mid = hreftomid(window.location.pathname);
-  var title = $("h6.card-header").text().trim();
+  var title = document.querySelector("h6").children[1].innerHTML;
   var tags = [];
   var tagdict = tagmap(1);
   $("a.badge").each(function(){
@@ -148,7 +253,7 @@ function main_updates() {
     var $v = $(v.map((e)=>e[0]));
     xhr_get(mid, function(){
       if (isfiltered_general(mid)) $v.hide();
-    }, 200);
+    });
     filterbutton(mid, $v, v[0].find("td:nth-child(3)"), "position:absolute;right:0");
   }
   $table.each(function(){
@@ -174,25 +279,9 @@ function filterbutton(s,$hide,$target,style) {
   return $a;
 }
 
-function xhr_get(mid, callback, delay = 1100, usecache = true) {
-  //if (usecache && time() - load(mid, "tagschecked") < 2592000000) { // 30 days
-  if (usecache && load(mid, "tagschecked")) {
-    callback();
-  } else {
-    throttled_get(midtoapihref(mid),function(data){
-      save(mid, "title", data.manga.title);
-      save(mid, "tags", data.manga.genres);
-      save(mid, "tagschecked", time());
-      save(mid, "lang", data.manga.lang_name);
-      callback();
-    }, delay);
-  }
-}
-
 // List all cache data to console, usable from webconsole for debug
 MangadexFilter.cache_get = function(filter) {
   var v = GM_listValues().filter(k=>k.match(filter));
-  //console.log(v);
   return v;
 }
 MangadexFilter.cache_print = function(mid) {
@@ -211,31 +300,9 @@ function time() {
   }
   return time.time;
 }
-// Note: Mangadex bans on 600 requests / 600 seconds.
-// A delay of 1100ms leaves 55 requests to the user per 10min.
-function throttled_get_delay(incr = 1100) {
-  if (typeof throttled_get_delay.lastgettime === "undefined") {
-    throttled_get_delay.lastgettime = 0;
-  }
-  throttled_get_delay.lastgettime += incr;
-  var now = new Date().getTime();
-  var delay = throttled_get_delay.lastgettime - now;
-  if (delay < 0) {
-    delay = 0;
-    throttled_get_delay.lastgettime = now;
-  }
-  return delay;
-}
-function throttled_get(url, callback, delay = 1100) {
-  setTimeout(()=>$.get(url, callback), throttled_get_delay(delay));
-}
 function save(mid, key, val){
   var data = GM_getValue(mid, false);
-  if (!data) {
-    data = {d: time()};
-  } else if (data === 1) {
-    data = {d: time(), f: true};
-  } else {
+  if (data) {
     try {
       data = JSON.parse(data);
     } catch (e){
@@ -251,7 +318,7 @@ function save(mid, key, val){
     data[key] = val;
   }
   var s = JSON.stringify(data);
-  console.log("Stored: " + mid + " -> " + s);
+  //console.log("Stored: " + mid + " -> " + s);
   GM_setValue(mid, s);
 }
 function filter(mid) {
@@ -367,7 +434,7 @@ function setoption(option, value) {
   return save("__OPTIONS", option, value);
 }
 function getoption(option) {
-  return load("__OPTIONS", option);
+  return load("__OPTIONS", option) || [];
 }
 MangadexFilter.initoptions = function(){
   GM_deleteValue("__OPTIONS");
@@ -376,11 +443,6 @@ MangadexFilter.initoptions = function(){
   save("__OPTIONS", "FILTERED_REGEX", []);
 }
 
-function textcontent($x) {
-  var s = "";
-  $x[0].childNodes.forEach(function(e){if (e.nodeType == Node.TEXT_NODE) s += e.textContent;});
-  return s;
-}
 function hreftomid(href) {
   if (typeof href === "undefined") return false;
   return href.match("[0-9]+");
@@ -410,16 +472,16 @@ MangadexFilter.dashboard_cache_filter = function(elem, mid){
   let tr = elem.parentNode.parentNode;
   save(mid, "f", !isfiltered(mid));
   tr.style.backgroundColor = filtercolorstring(mid,0.6);
-  tr.children[3].textContent = GM_getValue(mid);
+  tr.children[3].innerHTML = GM_getValue(mid);
 }
 MangadexFilter.dashboard_cache_update = function(elem,mid) {
   let tr = elem.parentNode.parentNode;
   xhr_get(mid, function(){
     colorbyfilter(mid, $(tr), 0.6);
     let c = tr.children;
-    c[2].textContent = load(mid, "title");
-    c[3].textContent = GM_getValue(mid);
-  }, 1100, false);
+    c[2].innerHTML = load(mid, "title");
+    c[3].innerHTML = GM_getValue(mid);
+  }, false);
 }
 MangadexFilter.dashboard_cache_remove = function(elem,mid){
   let tr = elem.parentNode.parentNode;
@@ -428,22 +490,17 @@ MangadexFilter.dashboard_cache_remove = function(elem,mid){
 }
 
 function controlpanel_listcache($table) {
-  $table.html("");
-  $table.attr("class", "cache");
-  let t = (new Date).getTime();
   let v = GM_listValues();
   let i = v.length;
   let s = "";
   while (--i >= 0) {
     let k = v[i];
-    if (k !== "__OPTIONS") {
+    if (k[0] !== "_") {
       s += `<tr style="background-color:${filtercolorstring(k,0.6)}"><td><a href="${midtohref(k)}" style="color:#00c">${k}</a></td><td style="-webkit-user-select:none"><a onclick="MangadexFilter.dashboard_cache_filter(this,${k})">Filter</a><a onclick="MangadexFilter.dashboard_cache_update(this,${k})">Update</a><a onclick="MangadexFilter.dashboard_cache_remove(this,${k})">Remove</a></td><td>${load(k,"title")}</td><td>${GM_getValue(k)}</td></tr>`;
-    } else {
-      s += `<tr><td colspan="9">${GM_getValue(k)}</td></tr>`;
     }
   }
+  $table.attr("class", "cache");
   $table.html(s);
-  console.log("Listed cache in " + ((new Date).getTime() - t) / 1000 + " seconds.");
 }
 
 function controlpanel_listtags($table){
@@ -468,7 +525,6 @@ function controlpanel_listtags($table){
   function refresh() {
     $table.html("");
     let dnf = getoption("FILTERED_TAGS_DNF");
-    if (!dnf) dnf = [];
     let tagrows = tagmap(0).map(function(v,i){
       let j = i+1;
       let $tr = $("<tr/>", {style: "border-bottom: 1px solid black"}).append("<td>" + j + "</td>");
@@ -480,7 +536,6 @@ function controlpanel_listtags($table){
     $("<td/>", {class: "link", text: "Add rule", colspan: "2"}).click(()=>{dnf.push([[],[]]);savednf(dnf);refresh();}).appendTo($control);
     
     let descstring = "Filter if ";
-    console.log(dnf);
     for (let k = 0; k < dnf.length; k++) {
       let disj = dnf[k];
       for (let i = 1; i <= tagrows.length; i++) {
@@ -564,6 +619,38 @@ function controlpanel_regexes($table){
     optarray_setval("FILTERED_REGEX", r, true);
     addlangrow($("<tr/>").insertBefore($tr), r);
   }).appendTo($td);
+}
+
+function controlpanel_requestcache($table){
+  let t = new Date().getTime();
+  let usr = JSON.parse(localStorage.MDFilterUSERREQUESTCACHE || "[]");
+  let api = JSON.parse(localStorage.MDFilterAPIREQUESTCACHE || "[]");
+  removeoldrequests(usr,t);
+  removeoldrequests(api,t);
+  let s = `<tr><td colspan=4>This is a log of your HTTP requests from the last 11 minutes.<br>This data is not sent anywhere.<br>The ban limits on Mangadex are 600 user requests/10min and 1500 API requests/10min.</td><tr><td colspan=2>User Requests: ${usr.length}</td><td colspan=2>API requests: ${api.length}</td></tr>`;
+  function record2string(v){
+    let a = v[1];
+    if (a[0] === "_") {
+      return `<td>${new Date(v[0]).toLocaleString()}</td><td>${a}</td>`;
+    }
+    return `<td>${new Date(v[0]).toLocaleString()}</td><td><a href="${a}">${a}</a></td>`;
+  }
+  for (let i = 0, j = Math.max(usr.length, api.length); i < j; ++i) {
+    s += "<tr>";
+    if (i < usr.length) {
+      s += record2string(usr[i]);
+    } else {
+      s += '<td class="blank" colspan=2/>';
+    }
+    if (i < api.length) {
+      s += record2string(api[i]);
+    } else {
+      s += '<td class="blank" colspan=2/>';
+    }
+    s += "</tr>";
+  }
+  $table.html(s);
+  $table.attr("class","requests");
 }
 
 
