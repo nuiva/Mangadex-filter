@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 17
+// @version 18
 // @match *://mangadex.org/*
 // @require      https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js
 // @require https://raw.githubusercontent.com/mathiasbynens/he/master/he.js
@@ -9,6 +9,7 @@
 // @grant        GM_setValue
 // @grant        GM_listValues
 // @grant        GM_deleteValue
+// @grant        unsafeWindow
 // ==/UserScript==
 
 function mutex_exec(callback, retry = 0) {
@@ -114,7 +115,7 @@ function enableXHRcapture(){
   }
   console.log("MangadexFilter: hooked to XHR requests.");
 }
-function xhr_get(mid, callback, usecache = true, delay = 100) {
+function xhr_get(mid, callback, usecache = true, delay = 300) { // Throttled on MD side to ~400
   //if (usecache && time() - load(mid, "tagschecked") < 2592000000) { // 30 days
   if (usecache && load(mid, "tagschecked")) {
     callback();
@@ -151,7 +152,6 @@ MangadexFilter.dashboard = function(){
     $("<button>Languages</button>").click(()=>controlpanel_langs(datatable)).appendTo(controldiv);
     $("<button>Regex</button>").click(()=>controlpanel_regexes(datatable)).appendTo(controldiv);
     $("<button>Requests</button>").click(()=>controlpanel_requestcache(datatable)).appendTo(controldiv);
-    cache_update = ()=>controlpanel_listcache(datatable, true);
     $("<button>", {text: "Close", onclick: "MangadexFilter.dashboard()"}).appendTo(controldiv);
     
     MangadexFilter.dashboard.body = b;
