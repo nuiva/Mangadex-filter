@@ -1,10 +1,9 @@
 // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 16
+// @version 17
 // @match *://mangadex.org/*
 // @require      https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js
-// @require      https://raw.githubusercontent.com/hiddentao/fast-levenshtein/master/levenshtein.js
 // @require https://raw.githubusercontent.com/mathiasbynens/he/master/he.js
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -50,34 +49,50 @@ function registerrequest(url, optionname) {
     removeoldrequests(v,t);
     v.push([t, url]);
     localStorage[key] = JSON.stringify(v);
-    console.log("Saved request " + url, v.slice());
   });
 }
 let RequestQueue = new Object();
 RequestQueue.queue = [];
+RequestQueue.staggerqueue = [];
+RequestQueue.staggertime = 0;
 // Only use for API requests!!
-RequestQueue.push = function(url, callback){
-  this.queue.push([url, callback]);
+RequestQueue.push = function(url, callback, delay){
+  this.queue.push([url, callback, delay]);
   if (this.queue.length == 1) this.process();
 }
 RequestQueue.process = function(){
+  console.log("process", RequestQueue.queue);
   const expiretime = 660000; // 11 minutes
   const maxrequests = 1400;
-  let t = new Date().getTime();
+  const t = new Date().getTime();
   let v = JSON.parse(localStorage.MDFilterAPIREQUESTCACHE || "[]");
   removeoldrequests(v,t);
   let room = maxrequests - v.length;
   if (room > 0) {
-    let a = this.queue.splice(0,room);
-    for (let i = 0, j = a.length; i < j; ++i) {
-      $.get(a[i][0], a[i][1]); // Registered to APIREQUESTCACHE by XHR hook
-    }
-    if (this.queue.length > 0) {
-      setTimeout(this.process, v[0][0] + expiretime - t);
+    if (RequestQueue.staggertime < t) {
+      let x = RequestQueue.queue.splice(0,1)[0];
+      RequestQueue.staggertime = t + x[2];
+      $.get(x[0], x[1]);
+      if (RequestQueue.queue.length) setTimeout(RequestQueue.process, x[2]);
+    } else {
+      setTimeout(RequestQueue.process, RequestQueue.staggertime - t);
     }
   } else {
-    setTimeout(this.process, v[0][0] + expiretime - t);
+    setTimeout(RequestQueue.process, v[0][0] + expiretime - t);
   }
+}
+RequestQueue.staggerpush = function(v){
+  mutex_exec(function(){
+    let t = new Date().getTime();
+    if (RequestQueue.staggertime < t) RequestQueue.staggertime = t;
+    for (let i = 0, j = v.length; i < j; ++i) {
+      setTimeout(function(){
+        $.get(v[i][0], v[i][1]);
+        //console.log(new Date().getTime());
+      }, RequestQueue.staggertime - t + 200*i);
+    }
+    RequestQueue.staggertime += 200 * v.length;
+  });
 }
 function enableXHRcapture(){
   function registerurl(url){
@@ -99,7 +114,7 @@ function enableXHRcapture(){
   }
   console.log("MangadexFilter: hooked to XHR requests.");
 }
-function xhr_get(mid, callback, usecache = true) {
+function xhr_get(mid, callback, usecache = true, delay = 100) {
   //if (usecache && time() - load(mid, "tagschecked") < 2592000000) { // 30 days
   if (usecache && load(mid, "tagschecked")) {
     callback();
@@ -110,7 +125,7 @@ function xhr_get(mid, callback, usecache = true) {
       save(mid, "tagschecked", time());
       save(mid, "lang", data.manga.lang_name);
       callback();
-    });
+    }, delay);
   }
 }
 
@@ -169,7 +184,7 @@ if (window.location.pathname === "/") {
   main_updates();
 } else if (window.location.pathname.match("^/(?:manga|title)/")) {
   main_manga();
-} else if (window.location.pathname.match("^/chapter/")) {
+} else if (window.location.pathname.match("^/chapter/.*[^s]$")) {
   registerrequest("_assumed miss at " + window.location.pathname, "APIREQUESTCACHE");
 }
 
@@ -291,6 +306,12 @@ MangadexFilter.cache_clear = function(filter){
   var v = MangadexFilter.cache_get(filter);
   if (confirm("Specific entries shown in log.\nClear cache?")) {
     v.forEach(GM_deleteValue);
+  }
+}
+MangadexFilter.cache_update = function(filter) {
+  let v = MangadexFilter.cache_get(filter);
+  for (let i = 0, j = v.length; i < j; ++i) {
+    xhr_get(v[i], ()=>{}, false, 500);
   }
 }
 // Get nonchanging time
