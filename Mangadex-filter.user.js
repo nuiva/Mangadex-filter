@@ -1,15 +1,15 @@
 // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 18
+// @version 17
 // @match *://mangadex.org/*
+// @match *://mangadex.cc/*
 // @require      https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js
 // @require https://raw.githubusercontent.com/mathiasbynens/he/master/he.js
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_listValues
 // @grant        GM_deleteValue
-// @grant        unsafeWindow
 // ==/UserScript==
 
 function mutex_exec(callback, retry = 0) {
@@ -95,26 +95,6 @@ RequestQueue.staggerpush = function(v){
     RequestQueue.staggertime += 200 * v.length;
   });
 }
-function enableXHRcapture(){
-  function registerurl(url){
-    if (url.match("/api/")) {
-      registerrequest(url, "APIREQUESTCACHE");
-    } else {
-      registerrequest(url, "USERREQUESTCACHE");
-    }
-  }
-  let oldXHRopen = XMLHttpRequest.prototype.open;
-  let oldfetch = fetch;
-  unsafeWindow.XMLHttpRequest.prototype.open = function (method, url, async, user, password) {
-    registerurl(url);
-    return oldXHRopen.apply(this, arguments);
-  }
-  unsafeWindow.fetch = function(url){
-    registerurl(url.href);
-    return oldfetch.apply(this,arguments);
-  }
-  console.log("MangadexFilter: hooked to XHR requests.");
-}
 function xhr_get(mid, callback, usecache = true, delay = 300) { // Throttled on MD side to ~400
   //if (usecache && time() - load(mid, "tagschecked") < 2592000000) { // 30 days
   if (usecache && load(mid, "tagschecked")) {
@@ -176,7 +156,6 @@ MangadexFilter.dashboard = function(){
   fill("FILTERED_REGEX", []);
 }
 
-enableXHRcapture();
 registerrequest(window.location.href, "USERREQUESTCACHE");
 if (window.location.pathname === "/") {
   main_frontpage();
@@ -256,6 +235,7 @@ function main_manga() {
   style();
   $a.click(()=>{save(mid, "f", !isfiltered(mid));style()});
   $a.appendTo($h);
+  document.addEventListener('keydown', e=>{if (e.key=="f"){save(mid, "f", !isfiltered(mid));style();}});
 }
 
 function main_updates() {
@@ -285,7 +265,7 @@ function main_updates() {
 }
 
 function filterbutton(s,$hide,$target,style) {
-  var $a = $("<a/>", {text: "Filter", style: style, href: "javascript:;"});
+  var $a = $("<a/>", {text: "Filter", style: style, href: "javascript:;", class: "filter-button"});
   $a.click(function(){
     $hide.hide();
     filter(s);
@@ -343,6 +323,7 @@ function save(mid, key, val){
   GM_setValue(mid, s);
 }
 function filter(mid) {
+  console.log("Filtered", mid);
   save(mid, "f", true);
 }
 function load(mid, key) {
