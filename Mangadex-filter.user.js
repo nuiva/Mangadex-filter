@@ -1,7 +1,7 @@
   // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 18
+// @version 19
 // @match *://mangadex.org/*
 // @match *://mangadex.cc/*
 // @require      https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js
