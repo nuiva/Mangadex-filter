@@ -1,7 +1,7 @@
   // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 19
+// @version 20
 // @match *://mangadex.org/*
 // @match *://mangadex.cc/*
 // @require      https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js
@@ -105,7 +105,7 @@ class Manga {
     if (this.title) data.b = this.title;
     if (this.lastUpdate) data.u = this.lastUpdate;
     if (this.filtered) data.f = 1;
-    if (this.tags.size) data.t = [...this.tags].sort();
+    if (this.tags && this.tags.size) data.t = [...this.tags].sort();
     if (this.demographic) data.e = this.demographic;
     if (this.language) data.l = this.language;
     if (this.hentai) data.h = 1;
@@ -1028,66 +1028,6 @@ function main_updates() {
   select(mangaLinks[0]);
 }
 
-// Namespace for exposed functions
-MangadexFilter = {
-  cache_get: function(filter) {
-    var v = GM_listValues().filter(k=>k.match(filter));
-    return v;
-  },
-  cache_clear: function(filter){
-    var v = MangadexFilter.cache_get(filter);
-    if (confirm("Specific entries shown in log.\nClear cache?")) {
-      v.forEach(GM_deleteValue);
-    }
-  },
-  cache_update: function(filter) {
-    let v = MangadexFilter.cache_get(filter);
-    for (let i = 0, j = v.length; i < j; ++i) {
-      xhr_get(v[i], ()=>{}, false, 500);
-    }
-  },
-  debug: {
-    GM_getValue: GM_getValue,
-    GM_setValue: GM_setValue,
-    GM_listValues: GM_listValues,
-    GM_deleteValue: GM_deleteValue
-  },
-  dashboard_cache_remove: function(elem,mid){
-    let tr = elem.parentNode.parentNode;
-    GM_deleteValue(mid);
-    tr.parentNode.removeChild(tr);
-  }
-};
-// Dashboard setup
-MangadexFilter.dashboard = function(){
-  if (typeof(MangadexFilter.dashboard.body) === "undefined") {
-    let b = document.createElement("body");
-    b.id = "dashboard";
-    b.style.margin = "0";
-    
-    let $div = $("<div/>", {style: "position:fixed;top:0;left:0;width:100%;height:100%;z-index:10000;background-color:#fff;color:#000"});
-    $div.appendTo(b);
-    let controldiv = $("<div/>", {style: "border: 2px solid black;height:30px;overflow:auto"})
-    controldiv.appendTo($div);
-    let datatable = $("<table/>", {style: "display: block; overflow: auto; white-space: nowrap; position:absolute;bottom:0;left:0;top:30px;width:100%;background-color:#fff"});
-    datatable.appendTo($div);
-    $("<button>Show tags</button>").click(()=>controlpanel_listtags(datatable)).appendTo(controldiv);
-    $("<button>Languages</button>").click(()=>controlpanel_langs(datatable)).appendTo(controldiv);
-    $("<button>", {text: "Close", onclick: "MangadexFilter.dashboard()"}).appendTo(controldiv);
-    
-    MangadexFilter.dashboard.body = b;
-    
-    let style = document.createElement("style");
-    style.type = "text/css";
-    style.innerHTML = "#dashboard .cache tr {border-bottom:1px solid black} #dashboard .cache td {padding-left:10px} #dashboard .cache a {margin-right: 3px} #dashboard .link:hover, #dashboard a:hover {cursor: pointer; text-decoration: underline} #dashboard .requests td {padding:0 10px 0 10px;border:1px solid black} #dashboard .requests .blank {border:none} #dashboard .requests a {color:#000}";
-    document.head.appendChild(style);
-  }
-  let temp = document.body;
-  let html = temp.parentNode;
-  html.removeChild(temp);
-  html.appendChild(MangadexFilter.dashboard.body);
-  MangadexFilter.dashboard.body = temp;
-};
 
 function addCSS() {
   let style = document.createElement("style");
@@ -1184,8 +1124,8 @@ function checkResponseErrors() {
   return false;
 }
 
-async function updateDatabase() {
-  let dbVersion = GM_getValue("VERSION");
+async function updateDatabase(dbVersion) {
+  dbVersion = dbVersion || GM_getValue("VERSION");
   if (dbVersion != GM_info.script.version) {
     console.log(`Updating from dbVersion ${dbVersion} to ${GM_info.script.version}.`);
     GM_setValue("VERSION", GM_info.script.version);
@@ -1271,6 +1211,68 @@ async function main() {
   addCSS();
 }
 main();
+
+// Namespace for exposed functions
+MangadexFilter = {
+  cache_get: function(filter) {
+    var v = GM_listValues().filter(k=>k.match(filter));
+    return v;
+  },
+  cache_clear: function(filter){
+    var v = MangadexFilter.cache_get(filter);
+    if (confirm("Specific entries shown in log.\nClear cache?")) {
+      v.forEach(GM_deleteValue);
+    }
+  },
+  cache_update: function(filter) {
+    let v = MangadexFilter.cache_get(filter);
+    for (let i = 0, j = v.length; i < j; ++i) {
+      xhr_get(v[i], ()=>{}, false, 500);
+    }
+  },
+  debug: {
+    GM_getValue: GM_getValue,
+    GM_setValue: GM_setValue,
+    GM_listValues: GM_listValues,
+    GM_deleteValue: GM_deleteValue,
+    updateDatabase: updateDatabase
+  },
+  dashboard_cache_remove: function(elem,mid){
+    let tr = elem.parentNode.parentNode;
+    GM_deleteValue(mid);
+    tr.parentNode.removeChild(tr);
+  }
+};
+// Dashboard setup
+MangadexFilter.dashboard = function(){
+  if (typeof(MangadexFilter.dashboard.body) === "undefined") {
+    let b = document.createElement("body");
+    b.id = "dashboard";
+    b.style.margin = "0";
+    
+    let $div = $("<div/>", {style: "position:fixed;top:0;left:0;width:100%;height:100%;z-index:10000;background-color:#fff;color:#000"});
+    $div.appendTo(b);
+    let controldiv = $("<div/>", {style: "border: 2px solid black;height:30px;overflow:auto"})
+    controldiv.appendTo($div);
+    let datatable = $("<table/>", {style: "display: block; overflow: auto; white-space: nowrap; position:absolute;bottom:0;left:0;top:30px;width:100%;background-color:#fff"});
+    datatable.appendTo($div);
+    $("<button>Show tags</button>").click(()=>controlpanel_listtags(datatable)).appendTo(controldiv);
+    $("<button>Languages</button>").click(()=>controlpanel_langs(datatable)).appendTo(controldiv);
+    $("<button>", {text: "Close", onclick: "MangadexFilter.dashboard()"}).appendTo(controldiv);
+    
+    MangadexFilter.dashboard.body = b;
+    
+    let style = document.createElement("style");
+    style.type = "text/css";
+    style.innerHTML = "#dashboard .cache tr {border-bottom:1px solid black} #dashboard .cache td {padding-left:10px} #dashboard .cache a {margin-right: 3px} #dashboard .link:hover, #dashboard a:hover {cursor: pointer; text-decoration: underline} #dashboard .requests td {padding:0 10px 0 10px;border:1px solid black} #dashboard .requests .blank {border:none} #dashboard .requests a {color:#000}";
+    document.head.appendChild(style);
+  }
+  let temp = document.body;
+  let html = temp.parentNode;
+  html.removeChild(temp);
+  html.appendChild(MangadexFilter.dashboard.body);
+  MangadexFilter.dashboard.body = temp;
+};
 
 class Dashboard {
   constructor() {
