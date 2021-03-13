@@ -1,7 +1,7 @@
   // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 20
+// @version 21
 // @match *://mangadex.org/*
 // @match *://mangadex.cc/*
 // @require      https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js
@@ -861,13 +861,7 @@ function main_manga() {
 }
 
 async function main_frontpage() {
-  // Add control panel button
-  {
-    let button = document.createElement("button");
-    button.textContent = "MDFilter";
-    button.addEventListener("click", MangadexFilter.dashboard);
-    document.querySelector(".navbar").appendChild(button);
-  }
+  document.querySelector(".navbar").appendChild((new Dashboard).createToggleButton("MDFilter"));
   // Add chapter class for all chapter links so they get :visited color
   for (let a of document.querySelectorAll("a")) {
     if (a.href.match(/\/chapter\/\d+/)) {
@@ -911,7 +905,6 @@ async function main_frontpage() {
       if (Date.now() - mangalist.controlDiv.lastRefresh > 5 * 60 * 1000) {
         mangalist.controlDiv.fetchFirstPages();
       }
-      mangalist.controlDiv.refreshButton.update();
     }, 60 * 1000);
   }
 }
@@ -1050,29 +1043,6 @@ function addCSS() {
   let style = document.createElement("style");
   style.type = "text/css";
   style.innerHTML = `
-    #dashboard .cache tr {
-      border-bottom:1px solid black
-    }
-    #dashboard .cache td {
-      padding-left:10px
-    }
-    #dashboard .cache a {
-      margin-right: 3px
-    }
-    #dashboard .link:hover, #dashboard a:hover {
-      cursor: pointer;
-      text-decoration: underline;
-    }
-    #dashboard .requests td {
-      padding:0 10px 0 10px;
-      border:1px solid black;
-    }
-    #dashboard .requests .blank {
-      border:none;
-    }
-    #dashboard .requests a {
-      color:#000;
-    }
     a.button {
       user-select: none;
     }
@@ -1084,9 +1054,9 @@ function addCSS() {
     .chapter:visited {
       color: gray;
     }
-    button:focus {
+    /*button:focus {
       background-color: #8f8;
-    }
+    }*/
     @keyframes flashRedColor {
       from {
         color: #f00;
@@ -1142,7 +1112,7 @@ function checkResponseErrors() {
 }
 
 async function updateDatabase(oldDbVersion) {
-  const newDbVersion = 20;
+  const newDbVersion = 21;
   oldDbVersion = oldDbVersion || GM_getValue("VERSION");
   if (oldDbVersion != newDbVersion) {
     console.log(`Updating from dbVersion ${oldDbVersion} to ${newDbVersion}.`);
@@ -1158,6 +1128,34 @@ async function updateDatabase(oldDbVersion) {
       div.scrollIntoView();
     }
     createText(`Updating from dbVersion ${oldDbVersion} to ${newDbVersion}.`);
+    // Update FILTERED_LANGS
+    if (oldDbVersion < 21) {
+      createText("Updating language filters...");
+      let allLangs = new Set();
+      for (let k of GM_listValues()) {
+        let mid = Number(k);
+        if (!isFinite(mid)) continue;
+        let m = new Manga(mid);
+        m.load();
+        if (m.language) allLangs.add(m.language);
+      }
+      let filteredLangs = new Option("FILTERED_LANGS");
+      let langMap = {
+        "Chinese (Trad)": "cn",
+        "Chinese (Simp)": "cn",
+        "Korean": "kr"
+      }
+      let newFilters = new Set();
+      for (let lang of filteredLangs.value) {
+        if (allLangs.has(lang)) {
+          newFilters.add(lang);
+        } else if (langMap[lang]) {
+          newFilters.add(langMap[lang]);
+        }
+      }
+      filteredLangs.value = newFilters;
+      filteredLangs.save();
+    }
     GM_setValue("VERSION", newDbVersion);
     createText("Update successful. Returning to Mangadex...");
     await sleep(3000);
@@ -1214,263 +1212,229 @@ MangadexFilter = {
     tr.parentNode.removeChild(tr);
   }
 };
-// Dashboard setup
-MangadexFilter.dashboard = function(){
-  if (typeof(MangadexFilter.dashboard.body) === "undefined") {
-    let b = document.createElement("body");
-    b.id = "dashboard";
-    b.style.margin = "0";
-    
-    let $div = $("<div/>", {style: "position:fixed;top:0;left:0;width:100%;height:100%;z-index:10000;background-color:#fff;color:#000"});
-    $div.appendTo(b);
-    let controldiv = $("<div/>", {style: "border: 2px solid black;height:30px;overflow:auto"})
-    controldiv.appendTo($div);
-    let datatable = $("<table/>", {style: "display: block; overflow: auto; white-space: nowrap; position:absolute;bottom:0;left:0;top:30px;width:100%;background-color:#fff"});
-    datatable.appendTo($div);
-    $("<button>Show tags</button>").click(()=>controlpanel_listtags(datatable)).appendTo(controldiv);
-    $("<button>Languages</button>").click(()=>controlpanel_langs(datatable)).appendTo(controldiv);
-    $("<button>", {text: "Close", onclick: "MangadexFilter.dashboard()"}).appendTo(controldiv);
-    
-    MangadexFilter.dashboard.body = b;
-    
-    let style = document.createElement("style");
-    style.type = "text/css";
-    style.innerHTML = "#dashboard .cache tr {border-bottom:1px solid black} #dashboard .cache td {padding-left:10px} #dashboard .cache a {margin-right: 3px} #dashboard .link:hover, #dashboard a:hover {cursor: pointer; text-decoration: underline} #dashboard .requests td {padding:0 10px 0 10px;border:1px solid black} #dashboard .requests .blank {border:none} #dashboard .requests a {color:#000}";
-    document.head.appendChild(style);
-  }
-  let temp = document.body;
-  let html = temp.parentNode;
-  html.removeChild(temp);
-  html.appendChild(MangadexFilter.dashboard.body);
-  MangadexFilter.dashboard.body = temp;
-};
 
 class Dashboard {
-  constructor() {
-    this.openDashboardButton = document.createElement("button");
-    this.openDashboardButton.textContent = "MDFilter";
-    this.openDashboardButton.addEventListener("click", () => this.open());
-    this.body = document.createElement("body");
-    this.head = document.createElement("head");
+  createToggleButton(buttonText) {
+    let button = document.createElement("button");
+    button.textContent = buttonText;
+    button.addEventListener("click", () => this.toggle());
+    return button;
+  }
+  init() {
+    // Create body
+    {
+      function addElement(type, parent) {
+        return parent.appendChild(document.createElement(type));
+      }
+      this.body = document.createElement("body");
+      this.body.id = "mdfbody";
+      this.body.style.backgroundColor = "#fff";
+      this.body.style.padding = 0;
+      // Create header bar
+      {
+        this.header = addElement("div", this.body);
+        this.header.style.borderBottom = "2px solid black";
+        this.header.style.height = "30px";
+        // Create tag tab button
+        {
+          let button = addElement("button", this.header);
+          button.textContent = "Tags";
+          button.onclick = () => this.showTagTab();
+        }
+        // Create language tab button
+        {
+          let button = addElement("button", this.header);
+          button.textContent = "Languages";
+          button.onclick = () => this.showLanguageTab();
+        }
+        this.header.appendChild(this.createToggleButton("Close"));
+      }
+      this.content = addElement("div", this.body);
+      this.content.style.display = "block";
+      this.content.style.top = "30px";
+      this.content.style.padding = "5px";
+    }
+    // Add CSS to head
+    {
+      let style = document.createElement("style");
+      style.type = "text/css";
+      style.innerHTML = `
+        #mdfbody {
+          padding: 0;
+          color: #000;
+        }
+        #mdfbody, #mdfbody table {
+          background-color: #fff;
+        }
+        .mdf-tag-table td {
+          width: 75px;
+          height: 20px;
+          border: 1px solid black;
+        }
+        .mdf-tag-table td.mdf-tag-name {
+          width: 200px;
+          border-left: none;
+        }
+        .mdf-tag-table td.mdf-tag-id {
+          width: 25px;
+          color: #aaa;
+          border-right: none;
+        }
+        .mdf-tag-table button {
+          width: 100%;
+        }
+        .mdf-tag-table input {
+          border: none;
+          width: 75px;
+          height: 20px;
+          background-color: #0000;
+        }
+        .mdf-tag-table .red {
+          background-color: #f005;
+        }
+        .mdf-tag-table .green {
+          background-color: #0f05;
+        }
+        .mdf-lang-table td, .mdf-lang-table th {
+          text-align: center;
+          padding: 0 5px 0 5px;
+          border: 1px solid black;
+        }
+        .mdf-lang-table td.mdf-flag-td {
+          width: 30px;
+          text-align: center;
+          background-color: #ccc;
+        }
+      `;
+      document.head.appendChild(style);
+    }
   }
   toggle() {
-    let temp = document.body;
-    document.body = this.body;
-    this.body = temp;
-    temp = document.head;
-    document.head = this.head;
-    this.head = temp;
+    if (!this.body) this.init();
+    [document.body, this.body] = [this.body, document.body];
   }
-  constructTagTableColumns() {
-    
-  }
-  addTagTable() {
-    let tags = new Set();
-    let opts = localStorage.getItem("MDF_TAGS");
-    if (opts) {
-      opts = JSON.parse(opts);
-    } else {
-      opts = [];
+  async showTagTab() {
+    this.content.innerHTML = "Loading tags...";
+    let tagList = await this.getTagList();
+    this.content.innerHTML = "";
+    let tagFilters = new Option("FILTERING_TAG_WEIGHTS");
+    function addElement(type, parent) {
+      return parent.appendChild(document.createElement(type));
     }
-    for (let o of opts) {
-      for (let tag in o) {
-        tags.add(tag);
+    let table = addElement("table", this.content);
+    table.className = "mdf-tag-table";
+    let tr = addElement("tr", table);
+    // Create add rule button
+    {
+      let td = addElement("td", tr);
+      td.colSpan = "2";
+      let addRuleButton = addElement("button", td);
+      addRuleButton.onclick = () => {
+        tagFilters.value.push({});
+        tagFilters.save();
+        this.showTagTab();
+      }
+      addRuleButton.textContent = "Add rule";
+    }
+    // Create remove rule buttons
+    for (let i = 0; i < tagFilters.value.length; ++i) {
+      let removeRuleButton = addElement("button", addElement("td", tr));
+      removeRuleButton.textContent = "Remove";
+      removeRuleButton.onclick = () => {
+        tagFilters.value.splice(i,1);
+        tagFilters.save();
+        this.showTagTab();
       }
     }
-    tags = [...tags].sort(Dashboard.compareTags);
-  }
-  saveAndRefreshTagTable() {
-    
-  }
-  saveTagTable() {
-    
-  }
-  static compareTags(a, b) {
-    let A = Number(a);
-    let B = Number(b);
-    let d = isNaN(A) - isNaN(B);
-    if (d) return d;
-    d = A - B;
-    if (d) return d;
-    return a.localeCompare(b);
-  }
-}
-
-function tagmap(dir) { // dir == 0: index -> name ##  dir == 1: name -> index
-  if (typeof tagmap.tagtable === "undefined") {
-    tagmap.tagtable = {
-      "-99": "Hentai",
-      "-4": "Josei",
-      "-3": "Seinen",
-      "-2": "Shoujo",
-      "-1": "Shounen",
-      1:"4-Koma",
-      2:"Action",
-      3:"Adventure",
-      4:"Award Winning",
-      5:"Comedy",
-      6:"Cooking",
-      7:"Doujinshi",
-      8:"Drama",
-      9:"Ecchi",
-      10:"Fantasy",
-      11:"Gyaru",
-      12:"Harem",
-      13:"Historical",
-      14:"Horror",
-      16:"Martial Arts",
-      17:"Mecha",
-      18:"Medical",
-      19:"Music",
-      20:"Mystery",
-      21:"Oneshot",
-      22:"Psychological",
-      23:"Romance",
-      24:"School Life",
-      25:"Sci-Fi",
-      28:"Shoujo Ai",
-      30:"Shounen Ai",
-      31:"Slice of Life",
-      32:"Smut",
-      33:"Sports",
-      34:"Supernatural",
-      35:"Tragedy",
-      36:"Long Strip",
-      37:"Yaoi",
-      38:"Yuri",
-      40:"Video Games",
-      41:"Isekai",
-      42:"Adaptation",
-      43:"Anthology",
-      44:"Web Comic",
-      45:"Full Color",
-      46:"User Created",
-      47:"Official Colored",
-      48:"Fan Colored",
-      49:"Gore",
-      50:"Sexual Violence",
-      51:"Crime",
-      52:"Magical Girls",
-      53:"Philosophical",
-      54:"Superhero",
-      55:"Thriller",
-      56:"Wuxia",
-      57:"Aliens",
-      58:"Animals",
-      59:"Crossdressing",
-      60:"Demons",
-      61:"Delinquents",
-      62:"Genderswap",
-      63:"Ghosts",
-      64:"Monster Girls",
-      65:"Loli",
-      66:"Magic",
-      67:"Military",
-      68:"Monsters",
-      69:"Ninja",
-      70:"Office Workers",
-      71:"Police",
-      72:"Post-Apocalyptic",
-      73:"Reincarnation",
-      74:"Reverse Harem",
-      75:"Samurai",
-      76:"Shota",
-      77:"Survival",
-      78:"Time Travel",
-      79:"Vampires",
-      80:"Traditional Games",
-      81:"Virtual Reality",
-      82:"Zombies",
-      83:"Incest",
-      84:"Mafia",
-      85:"Villainess"
-    }
-    tagmap.tagdict = {};
-    for (let k in tagmap.tagtable) {
-      tagmap.tagdict[tagmap.tagtable[k]] = k;
-    }
-  }
-  if (dir) {
-    return tagmap.tagdict;
-  }
-  return tagmap.tagtable;
-}
-
-function controlpanel_listtags($table){
-  $table.attr("class","tags");
-  function saveweights(tagweights){
-    let opt = new Option("FILTERING_TAG_WEIGHTS");
-    opt.value = tagweights;
-    opt.save();
-  }
-  function refresh() {
-    $table.html("");
-    let tagweights = Option.get("FILTERING_TAG_WEIGHTS");
-    let tagrows = {}
-    let tagtable = tagmap(0);
-    let $control = $("<tr/>").appendTo($table);
-    for (let v in tagtable) {
-      let j = tagtable[v];
-      let $tr = $("<tr/>", {style: "border-bottom: 1px solid black"}).append("<td>" + j + "</td>");
-      $("<td/>", {style: "padding: 0 10px 0 20px; border-right: 1px solid black;", text: v}).appendTo($tr);
-      $tr.appendTo($table);
-      tagrows[v] = $tr;
-    };
-    $("<td/>", {class: "link", text: "Add rule", colspan: "2"}).click(()=>{
-      tagweights.push({});
-      saveweights(tagweights);
-      refresh();
-    }).appendTo($control);
-    
-    for (let k = 0; k < tagweights.length; ++k) {
-      let w = tagweights[k];
-      for (let tag in tagrows) {
-        let input = document.createElement("input");
+    for (let tag of tagList) {
+      tr = addElement("tr", table);
+      let tagId = addElement("td", tr);
+      tagId.textContent = tag.id;
+      tagId.className = "mdf-tag-id";
+      let tagName = addElement("td", tr);
+      tagName.textContent = tag.name;
+      tagName.className = "mdf-tag-name";
+      for (let rule of tagFilters.value) {
+        let td = addElement("td", tr);
+        let input = addElement("input", td);
         input.type = "text";
-        input.value = w[tag] || "";
-        input.style.border = "none";
-        input.style.padding = 0;
-        input.style.width = "100%";
-        input.style.backgroundColor = "transparent";
-        input.style.textAlign = "right";
-        let $td = $("<td/>", {align: "center", style: "border-right: 1px solid black; padding: 0; width: 20px;"}).append(input).appendTo(tagrows[tag]);
-        let restyle = () => {
-          if (w[tag] < 0) $td.css("background-color", "#f99");
-          else if (w[tag] > 0) $td.css("background-color", "#9f9");
-          else $td.css("background-color", "");
+        input.value = rule[tag.id] || "";
+        function restyle() {
+          td.className = "";
+          if (rule[tag.id] < 0) td.className = "red";
+          else if (rule[tag.id] > 0) td.className = "green";
         }
-        input.addEventListener("change", function(){
-          w[tag] = Number(input.value);
-          saveweights(tagweights);
-          restyle();
-        });
         restyle();
+        input.onchange = function() {
+          if (!input.value) {
+            delete rule[tag.id];
+          } else {
+            rule[tag.id] = Number(input.value);
+          }
+          tagFilters.save();
+          restyle();
+        }
+      }
+    }
+  }
+  showLanguageTab() {
+    // Find all languages in database
+    let allLangs = new Set();
+    for (let k of GM_listValues()) {
+      let mid = Number(k);
+      if (!isFinite(mid)) continue;
+      let m = new Manga(mid);
+      m.load();
+      if (m.language) allLangs.add(m.language);
+    }
+    // Create DOM
+    this.content.innerHTML = "";
+    function addElement(type, parent) {
+      return parent.appendChild(document.createElement(type));
+    }
+    let table = addElement("table", this.content);
+    table.className = "mdf-lang-table";
+    let tr = addElement("tr", table);
+    addElement("th", tr).textContent = "Language";
+    addElement("th", tr).textContent = "Flag";
+    addElement("th", tr).textContent = "Filtered";
+    let filteredLangs = new Option("FILTERED_LANGS");
+    for (let lang of allLangs) {
+      tr = addElement("tr", table);
+      addElement("td", tr).textContent = lang;
+      let td = addElement("td", tr);
+      td.className = "mdf-flag-td";
+      addElement("span", td).className = "rounded flag flag-" + lang;
+      let checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = filteredLangs.value.has(lang);
+      checkbox.onchange = () => {
+        if (checkbox.checked) {
+          filteredLangs.value.add(lang);
+        } else {
+          filteredLangs.value.delete(lang);
+        }
+        filteredLangs.save();
       };
-      $("<td/>", {class: "link", text: "Remove", align: "center"}).click(()=>{tagweights.splice(k,1);saveweights(tagweights);refresh();}).appendTo($control);
-    };
+      addElement("td", tr).appendChild(checkbox);
+    }
   }
-  refresh();
-}
-
-function controlpanel_langs($table){
-  $table.html("");
-  $table.attr("class","langs");
-  let option = new Option("FILTERED_LANGS");
-  function addlangrow($tr, lang){
-    $("<td/>").append($("<a/>", {text: "Unfilter", href: "javascript:;", style: "color:#000;margin-left:5px"}).click(function(){option.delete(lang);option.save();$tr.remove()})).appendTo($tr);
-    $("<td/>", {text: lang, style: "padding:0 20px 0 10px"}).appendTo($tr);
+  async getTagList() {
+    if (this.taglist) return this.taglist;
+    this.taglist = [
+      {id: -99, name: "Hentai"},
+      {id: -4, name: "Josei"},
+      {id: -3, name: "Seinen"},
+      {id: -2, name: "Shoujo"},
+      {id: -1, name: "Shounen"}
+    ];
+    let response = await fetch_throttled("https://api.mangadex.org/v2/tag");
+    let json = await response.json();
+    let tags = json.data;
+    for (let key in tags) {
+      this.taglist.push(tags[key]);
+    }
+    return this.taglist;
   }
-  option.value.forEach(function(v){
-    addlangrow($("<tr/>").appendTo($table), v);
-  });
-  var $tr = $("<tr/>").appendTo($table);
-  var $td = $("<td/>", {colspan: "2"}).appendTo($tr);
-  var $input = $("<input/>", {type: "text"}).appendTo($td);
-  $("<button/>", {text: "Filter"}).click(function(){
-    var lang = $input.val();
-    option.add(lang);
-    option.save();
-    addlangrow($("<tr/>").insertBefore($tr), lang);
-  }).appendTo($td);
 }
 
