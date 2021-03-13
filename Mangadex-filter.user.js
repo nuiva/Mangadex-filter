@@ -5,7 +5,6 @@
 // @match *://mangadex.org/*
 // @match *://mangadex.cc/*
 // @require      https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js
-// @require https://raw.githubusercontent.com/mathiasbynens/he/master/he.js
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_listValues
@@ -84,7 +83,7 @@ class Option {
 }
 
 class Manga {
-  static updateInterval = 7 * 24 * 60 * 60 * 1000;
+  static updateInterval = 30 * 24 * 60 * 60 * 1000;
   constructor(mid) {
     this.id = mid;
     this.key = this.id;
@@ -176,6 +175,21 @@ class Manga {
 
 // Corresponds to one manga entry in /updates pages
 class MangaUpdateBatch {
+  static updateRowToUpdate(updateRow) {
+    let datestring = updateRow.children[6].children[0].dateTime.slice(0,-4)
+    let date = new Date(datestring);
+    let timezonediff = date.getTime() - Date.parse(date.toLocaleString("en-US", {timeZone: "GMT"}));
+    let link = updateRow.children[1].children[1];
+    let chapterId = Number(link.href.match(/\/chapter\/(\d+)/)[1]);
+    return {
+      link: link,
+      flag: updateRow.children[2].children[0],
+      group: updateRow.children[3].children[0].children[0],
+      uploader: updateRow.children[4].children[0],
+      time: date.getTime() + timezonediff,
+      chapterId: chapterId
+    };
+  }
   constructor(rows) {
     let href = rows[0].children[2].children[0].children[1].href;
     let mid = Number(href.match(/\d+/));
@@ -187,34 +201,21 @@ class MangaUpdateBatch {
     this.manga.save();
     this.updates = [];
     for (let i = 1; i < rows.length; ++i) {
-      let datestring = rows[i].children[6].children[0].dateTime.slice(0,-4)
-      let date = new Date(datestring);
-      let timezonediff = date.getTime() - Date.parse(date.toLocaleString("en-US", {timeZone: "GMT"}));
-      let link = rows[i].children[1].children[1];
-      let chapterId = Number(link.href.match(/\/chapter\/(\d+)/)[1]);
-      this.updates.push({
-        link: link,
-        flag: rows[i].children[2].children[0],
-        group: rows[i].children[3].children[0].children[0],
-        uploader: rows[i].children[4].children[0],
-        time: date.getTime() + timezonediff,
-        chapterId: chapterId
-      });
+      this.updates.push(MangaUpdateBatch.updateRowToUpdate(rows[i]));
     }
-  }
-  includesChapter(chapterId) {
-    for (let u of this.updates) {
-      if (u.chapterId == chapterId) {
-        return true;
-      }
-    }
-    return false;
   }
   extend(that) {
     console.assert(this.manga.id == that.manga.id);
+    let chapterMap = {};
+    for (let i = 0; i < this.updates.length; ++i) {
+      chapterMap[this.updates[i].chapterId] = i;
+    }
     for (let u of that.updates) {
-      if (!this.includesChapter(u.chapterId)) {
+      let i = chapterMap[u.chapterId];
+      if (i === undefined) {
         this.updates.push(u);
+      } else if (u.time > this.updates[i].time) {
+        this.updates[i] = u;
       }
     }
     this.updates.sort((a,b) => b.chapterId - a.chapterId);
@@ -260,6 +261,7 @@ function timestring(time) {
 }
 
 class FrontPageMangaUpdate {
+  static timeTextUpdateThresholds = [60*1000, 60*60*1000, 24*60*60*1000];
   constructor(mangaUpdateBatch) {
     this.data = mangaUpdateBatch;
     this.constructDiv();
@@ -376,7 +378,7 @@ class FrontPageMangaUpdate {
     this.groupLink.href = u.group.href;
     this.groupLink.textContent = u.group.textContent;
     this.time = u.time;
-    this.updateTime();
+    this.setTimeTextUpdater();
   }
   updateTime() {
     this.timeElement.textContent = " " + timestring(this.time);
@@ -397,6 +399,22 @@ class FrontPageMangaUpdate {
       if (!element) return;
     }
     return element;
+  }
+  setTimeTextUpdater() {
+    let tickerFunc = () => {
+      this.updateTime();
+      let timeDiff = Date.now() - this.time;
+      let updateInterval = 1000; // milliseconds
+      for (let threshold of FrontPageMangaUpdate.timeTextUpdateThresholds) {
+        if (timeDiff < threshold) break;
+        updateInterval = threshold;
+      }
+      let untilNextUpdate = updateInterval - timeDiff % updateInterval + 500;
+      this.timeTextUpdaterId = setTimeout(tickerFunc, untilNextUpdate);
+    }
+    if (this.timeTextUpdaterId) clearTimeout(this.timeTextUpdaterId);
+    if (this.hidden) return;
+    tickerFunc();
   }
 }
 
@@ -424,9 +442,9 @@ class FrontPageControlDiv {
     this.lastRefresh = Date.now();
     let refreshButton = document.createElement("button");
     refreshButton.update = () => refreshButton.textContent = "Refreshed " + timestring(this.lastRefresh) + " ago";
-    refreshButton.update();
     refreshButton.addEventListener("click", () => this.fetchFirstPages());
     this.refreshButton = refreshButton;
+    this.setTimeTextUpdater();
     return refreshButton;
   }
   constructLoadMoreButton() {
@@ -455,7 +473,7 @@ class FrontPageControlDiv {
       this.refreshButton.disabled = false;
       if (!this.lastPageFetched) this.loadMoreButton.disabled = false;
       if (this.parent.selection == this) {
-        this.select();
+        this.select(false);
         if (this.activeButton) {
           this.activeButton.focus();
           delete this.activeButton;
@@ -464,7 +482,6 @@ class FrontPageControlDiv {
       this.loadingIcon.style.display = "none";
     }
     this.loadMoreButton.update();
-    this.refreshButton.update();
   }
   select(scrollIntoView = true) {
     document.activeElement.blur();
@@ -536,7 +553,23 @@ class FrontPageControlDiv {
       if (seenCount >= 10) break;
     }
     this.lastRefresh = Date.now();
+    this.setTimeTextUpdater();
     this.setLoading(false);
+  }
+  setTimeTextUpdater() {
+    let tickerFunc = () => {
+      this.refreshButton.update();
+      let timeDiff = Date.now() - this.lastRefresh;
+      let updateInterval = 1000; // milliseconds
+      for (let threshold of FrontPageMangaUpdate.timeTextUpdateThresholds) {
+        if (timeDiff < threshold) break;
+        updateInterval = threshold;
+      }
+      let untilNextUpdate = updateInterval - timeDiff % updateInterval;
+      this.timeTextUpdaterId = setTimeout(tickerFunc, untilNextUpdate);
+    }
+    if (this.timeTextUpdaterId) clearTimeout(this.timeTextUpdaterId);
+    tickerFunc();
   }
 }
 
@@ -871,19 +904,6 @@ async function main_frontpage() {
   let lastVisit = Math.min(Date.now() - 2 * 24 * 60 * 60 * 1000, GM_getValue("LAST_VISIT", 0));
   GM_setValue("LAST_VISIT", Date.now());
   document.querySelector(".row.m-0").addEventListener("focusin", e => mangalist.onFocusEvent(e));
-  /*addEventListener("storage", function(e) {
-    if (!e.key) return;
-    if (e.key === "__OPTIONS") {
-      for (let mid in mangalist.mangas) {
-        mangalist.onStorageEvent(mid);
-      }
-      return;
-    }
-    let m = e.key.match(/^M(\d+)/);
-    if (!m) return;
-    let mid = Number(m[1]);
-    mangalist.onStorageEvent(mid);
-  });*/
   // Initial and periodic fetches of update pages
   {
     await mangalist.controlDiv.fetchUntilTime(lastVisit);
@@ -892,9 +912,6 @@ async function main_frontpage() {
         mangalist.controlDiv.fetchFirstPages();
       }
       mangalist.controlDiv.refreshButton.update();
-      for (let u of mangalist.visible) {
-        if (u.updateTime) u.updateTime();
-      }
     }, 60 * 1000);
   }
 }
@@ -1124,11 +1141,11 @@ function checkResponseErrors() {
   return false;
 }
 
-async function updateDatabase(dbVersion) {
-  dbVersion = dbVersion || GM_getValue("VERSION");
-  if (dbVersion != GM_info.script.version) {
-    console.log(`Updating from dbVersion ${dbVersion} to ${GM_info.script.version}.`);
-    GM_setValue("VERSION", GM_info.script.version);
+async function updateDatabase(oldDbVersion) {
+  const newDbVersion = 20;
+  oldDbVersion = oldDbVersion || GM_getValue("VERSION");
+  if (oldDbVersion != newDbVersion) {
+    console.log(`Updating from dbVersion ${oldDbVersion} to ${newDbVersion}.`);
     let origBody = document.body;
     let html = origBody.parentNode;
     let tempBody = document.createElement("body");
@@ -1140,60 +1157,14 @@ async function updateDatabase(dbVersion) {
       tempBody.appendChild(div);
       div.scrollIntoView();
     }
-    createText(`Updating from dbVersion ${dbVersion} to ${GM_info.script.version}.`);
-    // Update mangas
-    if (dbVersion === undefined || dbVersion < 17) {
-      // Old version used different keys for mangas. This update just moves filtered mangas into new format.
-      for (let key of GM_listValues()) {
-        let mid = parseInt(key, 10);
-        if (isNaN(mid)) continue;
-        let oldValue = JSON.parse(GM_getValue(key));
-        if (oldValue.f) {
-          let m = new Manga(mid);
-          m.filtered = true;
-          m.save();
-        }
-        GM_deleteValue(key);
-      }
-    }
-    else if (dbVersion == 17) {
-      // Rename M${mid} to ${mid}
-      for (let key of GM_listValues()) {
-        let match = key.match(/^M(\d+)$/);
-        if (match) {
-          let mid = parseInt(match[1], 10);
-          createText(`Moving ${key} -> ${mid}`);
-          GM_setValue(mid, GM_getValue(key));
-          GM_deleteValue(key);
-          await sleep(0); // Redraws
-        }
-      }
-    }
-    // Update __OPTIONS
-    if (dbVersion === undefined || dbVersion < 17) {
-      createText("Updating __OPTIONS...");
-      let dnfs = Option.get("FILTERED_TAGS_DNF");
-      if (dnfs) {
-        let tagWeightArray = [];
-        for (let dnf of dnfs) {
-          createText("Modifying DNF " + JSON.stringify(dnf));
-          let tagWeights = {};
-          for (let x of dnf[0]) tagWeights[x] = -Infinity;
-          for (let x of dnf[1]) tagWeights[x] = Infinity;
-          tagWeightArray.push(tagWeights);
-          await sleep(0); // Redraw
-        }
-        let opt = new Option("FILTERING_TAG_WEIGHTS");
-        opt.value = tagWeightArray;
-        opt.save();
-      }
-    }
+    createText(`Updating from dbVersion ${oldDbVersion} to ${newDbVersion}.`);
+    GM_setValue("VERSION", newDbVersion);
     createText("Update successful. Returning to Mangadex...");
     await sleep(3000);
     html.removeChild(tempBody);
     html.appendChild(origBody);
   }
-  GM_addValueChangeListener("VERSION", close); // Closes current tab if another tab begins updating db to avoid corruption
+  GM_addValueChangeListener("VERSION", close); // Closes current tab if another tab updates db to avoid corruption
 }
 
 async function main() {
