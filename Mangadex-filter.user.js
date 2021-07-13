@@ -800,8 +800,9 @@
             this.classList.add("chapter-table");
         }
         async fetchMore() {
-            let chapters = await fetchRecentChapters(this.offset);
+            let oldOffset = this.offset;
             this.offset += 100;
+            let chapters = await fetchRecentChapters(oldOffset);
             for (let { chapter, manga } of chapters) {
                 this.addChapter(chapter, manga);
             }
