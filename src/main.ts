@@ -8,8 +8,8 @@ const mainMap: Map<RegExp,CallableFunction> = new Map([
     [/^\/title\/[a-f0-9-]+$/, mainTitlepage]
 ]);
 
-function main() {
-    update();
+async function main() {
+    await update();
     for (let [k,f] of mainMap.entries()) {
         if (k.test(location.pathname)) {
             f();

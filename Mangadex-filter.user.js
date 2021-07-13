@@ -1282,8 +1282,8 @@
         //[/^\/titles\/latest\/$/, mainLatest],
         [/^\/title\/[a-f0-9-]+$/, main$2]
     ]);
-    function main() {
-        main$1();
+    async function main() {
+        await main$1();
         for (let [k, f] of mainMap.entries()) {
             if (k.test(location.pathname)) {
                 f();
