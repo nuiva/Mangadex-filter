@@ -9,10 +9,7 @@
 // @grant        GM_deleteValue
 // @grant       GM_addValueChangeListener
 // @grant       GM_removeValueChangeListener
-// @grant unsafeWindow
 // ==/UserScript==
-
-unsafeWindow.MDFDEBUG = [GM_getValue, GM_setValue, GM_deleteValue, GM_listValues];
 (function () {
     'use strict';
 
