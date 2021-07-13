@@ -3,1438 +3,1296 @@
 // @namespace Mangadex filter
 // @version 21
 // @match *://mangadex.org/*
-// @match *://mangadex.cc/*
-// @require      https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_listValues
 // @grant        GM_deleteValue
 // @grant       GM_addValueChangeListener
+// @grant       GM_removeValueChangeListener
+// @grant unsafeWindow
 // ==/UserScript==
 
-function sleep(ms) {
-  return new Promise(f => setTimeout(f, ms));
-}
+unsafeWindow.MDFDEBUG = [GM_getValue, GM_setValue, GM_deleteValue, GM_listValues];
+(function () {
+    'use strict';
 
-async function fetch_throttled(url) {
-  let t = Date.now();
-  if (typeof fetch_throttled.t === "undefined") {
-    fetch_throttled.t = t;
-  }
-  let d = fetch_throttled.t - t;
-  fetch_throttled.t += 500;
-  if (d > 0) await sleep(d);
-  return await fetch(url);
-}
-
-class Option {
-  static dbKey = "__OPTIONS";
-  static defaults = {
-    FILTERING_TAG_WEIGHTS: [],
-    FILTERED_LANGS: [], // Transforms into a Set()
-    FILTERED_REGEX: [],
-  };
-  static get(optionName) {
-    let savedOptions = JSON.parse(GM_getValue(Option.dbKey, null)) || {};
-    let value = (optionName in savedOptions) ? savedOptions[optionName] : Option.defaults[optionName];
-    if (optionName == "FILTERED_LANGS") {
-      return new Set(value);
+    async function fetchRecentChapters(offset = 0) {
+        let response = await fetch(`https://api.mangadex.org/chapter?order[publishAt]=desc&limit=100&includes[]=manga&translatedLanguage[]=en&offset=${offset}`);
+        let json = await response.json();
+        let returnValue = [];
+        for (let entry of json.results) {
+            let manga;
+            for (let rel of entry.relationships) {
+                if (rel.type == "manga") {
+                    manga = rel;
+                    break;
+                }
+            }
+            returnValue.push({
+                chapter: entry.data,
+                manga: manga
+            });
+        }
+        return returnValue;
     }
-    // Change stringified Infinity and NaN back to Numbers
-    else if (optionName == "FILTERING_TAG_WEIGHTS") {
-      for (let weights of value) {
-        for (let k in weights) {
-          if (typeof weights[k] === "string") {
-            weights[k] = Number(weights[k]);
+    function sleep(ms) {
+        return new Promise(f => setTimeout(f, ms));
+    }
+    const throttleTime = 200;
+    let requestPromise = new Promise(f => f(undefined));
+    function fetchThrottled(url) {
+        let fetchPromise = requestPromise.then(() => fetch(url));
+        requestPromise = fetchPromise.then(() => sleep(throttleTime));
+        return fetchPromise;
+    }
+    async function fetchCovers(...mangaIdArray) {
+        let mangaIdToCover = new Map();
+        while (mangaIdArray.length) {
+            let currentRequestMangas = [];
+            while (currentRequestMangas.length < 100 && mangaIdArray.length) {
+                currentRequestMangas.push(mangaIdArray.pop());
+            }
+            let offset = 0;
+            let total = 0;
+            do {
+                let request = `https://api.mangadex.org/cover?limit=100&offset=${offset}`;
+                for (let mangaId of currentRequestMangas) {
+                    request += `&manga[]=${mangaId}`;
+                }
+                let response = await fetchThrottled(request);
+                let json = await response.json();
+                for (let entry of json.results) {
+                    console.assert(entry.relationships[0].type == "manga");
+                    mangaIdToCover.set(entry.relationships[0].id, entry.data.attributes.fileName);
+                }
+                total = json.total;
+                offset += json.limit;
+            } while (offset < total);
+        }
+        return mangaIdToCover;
+    }
+
+    // Synchronised data IO to shared memory, i.e., localStorage or GM_*
+    class Callbackable {
+        constructor() {
+            this.callbacks = [];
+        }
+        addChangeListener(callback) {
+            if (!(callback instanceof Function))
+                debugger;
+            this.callbacks.push(callback);
+        }
+        removeChangeListener(callback) {
+            let i = this.callbacks.indexOf(callback);
+            if (i === -1)
+                return false;
+            this.callbacks.splice(i, 1);
+            return true;
+        }
+        onChange(oldValue, newValue, remote) {
+            for (let callback of this.callbacks) {
+                callback(oldValue, newValue, remote);
+            }
+        }
+        destroy() {
+            delete this.callbacks;
+        }
+    }
+    class Settable extends Callbackable {
+    }
+    class Variable extends Settable {
+        constructor(value) {
+            super();
+            this.value = value;
+        }
+        get() {
+            return this.value;
+        }
+        set(value) {
+            if (value === this.value)
+                return;
+            this._set_remote(value, false);
+        }
+        _set_remote(value, remote) {
+            let oldValue = this.value;
+            this.value = value;
+            this.onChange(oldValue, value, remote);
+        }
+    }
+    class Wrapper extends Settable {
+        constructor(variable) {
+            super();
+            this.variable = variable;
+            variable.addChangeListener(this.onVariableChanged.bind(this));
+        }
+        destroy() {
+            //this.variable.removeChangeListener(this.onVariableChanged);
+            super.destroy();
+            this.variable.destroy();
+        }
+    }
+    class BoolWrapper extends Wrapper {
+        set(value) {
+            this.variable.set(value ? 1 : undefined);
+            return this.get();
+        }
+        get() {
+            return !!this.variable.get();
+        }
+        toggle() {
+            return this.set(!this.get());
+        }
+        onVariableChanged(oldValue, newValue, remote) {
+            this.onChange(!!oldValue, !!newValue, remote);
+        }
+    }
+    class ArrayWrapper extends Wrapper {
+        get() {
+            return this.variable.get() || [];
+        }
+        set(value) {
+            // Check if arrays are equal
+            if (value.length === this.length) {
+                let i = 0;
+                for (let current = this.variable.get(); i < value.length && value[i] === current[i]; ++i)
+                    ;
+                if (i === value.length)
+                    return;
+            }
+            if (value.length === 0) {
+                this.variable.set(undefined);
+            }
+            else {
+                this.variable.set(value);
+            }
+        }
+        get length() {
+            return this.variable.get()?.length ?? 0;
+        }
+        push(...values) {
+            this.set([...this.get(), ...values]);
+        }
+        remove(value) {
+            let arr = [...this.get()];
+            let i = arr.indexOf(value);
+            if (i === -1)
+                return false;
+            arr.splice(i, 1);
+            this.set(arr);
+            return true;
+        }
+        pop(index) {
+            index ??= this.length - 1;
+            let newValue = [...this.get()];
+            let deleted = newValue.splice(index, 1);
+            this.set(newValue);
+            return deleted[0];
+        }
+        onVariableChanged(oldValue, newValue, remote) {
+            super.onChange(oldValue || [], newValue || [], remote);
+        }
+        [Symbol.iterator]() {
+            return this.get()[Symbol.iterator]();
+        }
+    }
+    class JsonSetWrapper extends Wrapper {
+        constructor(variable) {
+            super(variable);
+            // Wraps a variable such that it's stored as an array but has Set API
+            // Useful for sets stored in JSON.
+            this.value = new Set();
+            this.value = new Set(variable.get() || []);
+        }
+        get() {
+            return this.value;
+        }
+        set(value) {
+            this.variable.set([...value]);
+        }
+        has(value) {
+            return this.value.has(value);
+        }
+        add(value) {
+            if (this.has(value))
+                return false;
+            this.variable.push(value);
+            return true;
+        }
+        pop(value) {
+            if (this.has(value)) {
+                if (!this.variable.remove(value))
+                    throw Error("Wrapper desync");
+                return true;
+            }
+            return false;
+        }
+        toggle(value) {
+            if (this.has(value)) {
+                this.pop(value);
+                return false;
+            }
+            this.add(value);
+            return true;
+        }
+        onVariableChanged(oldValue, newValue, remote) {
+            let removed = this.value;
+            this.value = new Set(newValue);
+            let added = new Set();
+            for (let addedValue of newValue) {
+                if (!removed.delete(addedValue)) {
+                    added.add(addedValue);
+                }
+            }
+            super.onChange(removed, added, remote);
+        }
+        [Symbol.iterator]() {
+            return this.value[Symbol.iterator]();
+        }
+    }
+    class WebStorageField extends Variable {
+        constructor(storage, optionName) {
+            super(JSON.parse(storage.getItem(optionName)));
+            this.optionName = optionName;
+            this.storage = storage;
+            this.eventListener = e => this.onOptionChange(e, true);
+            window.addEventListener("storage", this.eventListener);
+            if (!WebStorageField.localChangeListeners.has(storage)) {
+                WebStorageField.localChangeListeners.set(storage, new Set());
+            }
+            WebStorageField.localChangeListeners.get(storage).add(this);
+        }
+        set(value) {
+            if (value === undefined) {
+                this.storage.removeItem(this.optionName);
+            }
+            else {
+                this.storage.setItem(this.optionName, JSON.stringify(value));
+            }
+            let e = document.createEvent("StorageEvent");
+            // @ts-ignore
+            e.initStorageEvent("storage", false, false, this.optionName, JSON.stringify(oldValue), JSON.stringify(value), location.href, this.storage);
+            for (let listener of WebStorageField.localChangeListeners.get(this.storage)) {
+                listener.onOptionChange(e, false);
+            }
+        }
+        onOptionChange(storageEvent, remote) {
+            if (storageEvent.key === null) {
+                return super._set_remote(null, remote);
+            }
+            if (storageEvent.key == this.optionName) {
+                return super._set_remote(JSON.parse(storageEvent.newValue), remote);
+            }
+        }
+        destroy() {
+            window.removeEventListener("storage", this.eventListener);
+            WebStorageField.localChangeListeners.get(this.storage).delete(this);
+            super.destroy();
+        }
+    }
+    WebStorageField.localChangeListeners = new Map();
+    class GMOption extends Variable {
+        constructor(optionName) {
+            // @ts-expect-error
+            super(GM_getValue(optionName));
+            this.optionName = optionName;
+            // @ts-expect-error
+            this.GMlistenerId = GM_addValueChangeListener(this.optionName, (key, oldValue, newValue, remote) => super.set(newValue, remote));
+        }
+        set(value) {
+            console.log("GM_set", this.optionName, value);
+            // This only sets the GMStorage value, which sends a change event, which changes the local value in the event listener
+            if (value === undefined) {
+                // @ts-expect-error
+                return GM_deleteValue(this.optionName);
+            }
+            // @ts-expect-error
+            return GM_setValue(this.optionName, value);
+        }
+        destroy() {
+            // @ts-expect-error
+            GM_removeValueChangeListener(this.GMlistenerId);
+            super.destroy();
+        }
+    }
+    class ObjectField extends Variable {
+        constructor(option, key) {
+            super(option.get()?.[key]);
+            this.option = option;
+            this.key = key;
+            this.onOptionChange = (oldValue, newValue, remote) => {
+                let newEntry = newValue?.[this.key];
+                if (this.get() === newEntry)
+                    return;
+                super._set_remote(newEntry, remote);
+            };
+            this.option.addChangeListener(this.onOptionChange);
+        }
+        set(value) {
+            if (value === this.value)
+                return;
+            let newObj = { ...this.option.get() };
+            if (value === undefined) {
+                delete newObj[this.key];
+            }
+            else {
+                newObj[this.key] = value;
+            }
+            this.option.set(newObj);
+        }
+        destroy() {
+            this.option.removeChangeListener(this.onOptionChange);
+            super.destroy();
+        }
+    }
+    class ArrayField extends Variable {
+        constructor(option, index) {
+            super(option.get()[index]);
+            this.option = option;
+            this.index = index;
+            this.onOptionChanged = (oldValue, newValue, remote) => {
+                let newEntry = newValue[this.index];
+                if (newEntry === this.value)
+                    return;
+                super._set_remote(newEntry, remote);
+            };
+            this.option.addChangeListener(this.onOptionChanged);
+        }
+        set(value) {
+            if (value === this.value)
+                return;
+            let newArr = [...this.option.get()];
+            newArr[this.index] = value;
+            this.option.set(newArr);
+        }
+        destroy() {
+            this.option.removeChangeListener(this.onOptionChanged);
+            super.destroy();
+        }
+    }
+    class SetIndicator extends Variable {
+        constructor(variable, key) {
+            super(variable.has(key.get()));
+            this.variable = variable;
+            this.key = key;
+            this.onVariableChanged = () => {
+                super.set(this.variable.has(this.key.get()));
+            };
+            this.variable.addChangeListener(this.onVariableChanged);
+            this.key.addChangeListener(this.onVariableChanged);
+        }
+        toggle() {
+            return this.variable.toggle(this.key.get());
+        }
+    }
+    /*
+          static MatchingRegexSet = class extends SynchronizedValue.Callbackable {
+            constructor(regexSetOption, matchString) {
+              this.matchString = matchString;
+              this.option = regexSetOption;
+              this.option.addChangeListener(this.onOptionChange.bind(this));
+              this.matchingRegex = new Set();
+              for (let regex of this.option.regexIterator()) {
+                if (this.matchString.match(regex)) {
+                  this.matchingRegex.add(regex);
+                }
+              }
+            }
+            get() {
+              return this.matcingRegex.size && this.matchingRegex;
+            }
+            onOptionChange(added, deleted, remote) {
+              let addedSubset = new Set();
+              let deletedSubset = new Set();
+              for (let element of deleted) {
+                if (this.matchingRegex.delete(element)) {
+                  deletedSubset.add(element);
+                }
+              }
+              for (let element of added) {
+                if (this.matchString.match(this.option.constructor.regexParse(element))) {
+                  this.matches.add(element);
+                  addedSubset.add(element);
+                }
+              }
+              if (addedSubset.size || deletedSubset.size) this.onChange(addedSubset, deletedSubset, remote);
+            }
+          }
+          static Not = class extends SynchronizedValue.Callbackable {
+            constructor(option) {
+              super();
+              this.option = option;
+              option.addChangeListener(this.onOptionChange.bind(this));
+            }
+            get() {
+              return !this.option.get();
+            }
+            onOptionChange(oldValue, newValue, remote) {
+              if (!oldValue === !newValue) return;
+              this.onChange(!oldValue, !newValue, remote);
+            }
+          }
+          static Any = class extends SynchronizedValue.Callbackable {
+            constructor(...options) {
+              super();
+              this.options = options;
+              this.enabled = new Set();
+              for (let option of options) {
+                if (option.get()) this.enabled.add(option);
+                option.addChangeListener(this.onOptionChange.bind(this,option));
+              }
+            }
+            get() {
+              return !!this.enabled.size;
+            }
+            onOptionChange(option, oldValue, newValue, remote) {
+              console.log(this, arguments);
+              let a = this.enabled.has(option);
+              if (a == !!newValue) return;
+              oldValue = this.get();
+              if (a) {
+                this.enabled.delete(option);
+              } else {
+                this.enabled.add(option);
+              }
+              newValue = this.get();
+              if (oldValue != newValue) this.onChange(oldValue, newValue, remote);
+            }
+          }
+          static All = class extends this.Any {
+            get() {
+              return this.options.length == this.enabled.size;
+            }
+          }
+          static Includes = class extends SynchronizedValue.Callbackable {
+            constructor(option, value) {
+              super();
+              this.option = option;
+              this.value = value;
+            }
+            get() {
+              return this.option.get()?.includes(this.value);
+            }
+            onOptionChange(oldValue, newValue, remote) {
+              oldValue = oldValue.includes(this.value);
+              newValue = newValue.includes(this.value);
+              if (oldValue !== newValue) this.onChange(oldValue, newValue, remote);
+            }
+          }
+        }
+        static Wrapper = class {
+          static Bool = BoolOption => class extends BoolOption {
+            toggle() {
+              super.set(!super.get() && 1 || undefined);
+            }
+          }
+          static Set = ArrayOption => class extends ArrayOption {
+            constructor() {
+              super(...arguments);
+              this.value = new Set(super.get() || []);
+            }
+            get() {
+              return this.value.size && this.value;
+            }
+            has(element) {
+              return this.value.has(element);
+            }
+            add(element) {
+              if (this.value.has(element)) return;
+              this.value.add(element);
+              super.set(Array.from(this.value));
+            }
+            delete(element) {
+              if (!this.value.delete(element)) return;
+              super.set(this.value.size && Array.from(this.value) || undefined);
+            }
+            toggle(element) {
+              if (this.value.has(element)) {
+                this.delete(element);
+              } else {
+                this.add(element);
+              }
+            }
+            [Symbol.iterator]() {
+              return this.value[Symbol.iterator]();
+            }
+            onChange(oldValue, newValue, remote) {
+              this.value = new Set(newValue);
+              if (!oldValue) return super.onChange(new Set(newValue), new Set(), remote);
+              if (!newValue) return super.onChange(new Set(), new Set(oldValue), remote);
+              let added = new Set();
+              let deleted = new Set();
+              for (let element of newValue) added.add(element);
+              for (let element of oldValue) {
+                if (!added.delete(element)) {
+                  deleted.add(element);
+                }
+              }
+              super.onChange(added, deleted, remote);
+            }
+          }
+          static RegexSet = ArrayOption => class extends this.Set(ArrayOption) {
+            *regexIterator() {
+              for (let regexString of super[Symbol.Iterator]()) {
+                yield this.constructor.regexParse(regexString);
+              }
+            }
+            static regexParse(regexString) {
+              let match = regexString.match("^/(.*)/([a-z]*)$");
+              if (!match) return null;
+              return new RegExp(match[1], match[2]);
+            }
           }
         }
       }
-    }
-    return value;
-  }
-  constructor(optionName) {
-    this.key = optionName;
-    this.load();
-  }
-  load() {
-    this.value = Option.get(this.key);
-  }
-  save() {
-    let options = JSON.parse(GM_getValue(Option.dbKey, null)) || Option.defaults;
-    // Infinity and NaN are changed to null by JSON.stringify so we change them to strings
-    if (this.key == "FILTERING_TAG_WEIGHTS") {
-      for (let weights of this.value) {
-        for (let key in weights) {
-          if (!Number.isFinite(weights[key])) {
-            weights[key] = weights[key].toString();
-          }
+    */
+
+    let options = new GMOption("__OPTIONS");
+    let FILTERED_LANGS = new JsonSetWrapper(new ArrayWrapper(new ObjectField(options, "FILTERED_LANGS")));
+    let FILTERING_TAG_WEIGHTS = new ArrayWrapper(new ObjectField(options, "FILTERING_TAG_WEIGHTS"));
+
+    class FilterButton extends HTMLButtonElement {
+        constructor(filterOption) {
+            super();
+            this.filterOption = filterOption;
+            this.addEventListener("click", filterOption.toggle.bind(filterOption));
+            filterOption.addChangeListener(this.onOptionChanged.bind(this));
+            this.classList.add(FilterButton.typeName);
+            this.onOptionChanged();
         }
-      }
-    }
-    if (this.key == "FILTERED_LANGS") {
-      options[this.key] = [...this.value];
-    } else {
-      options[this.key] = this.value;
-    }
-    let s = JSON.stringify(options);
-    GM_setValue(Option.dbKey, s);
-    console.log("Saved", Option.dbKey, options);
-  }
-}
-
-class Manga {
-  static updateInterval = 30 * 24 * 60 * 60 * 1000;
-  constructor(mid) {
-    this.id = mid;
-    this.key = this.id;
-  }
-  load() {
-    let data = JSON.parse(GM_getValue(this.key, null)) || {};
-    this.filtered = data.f;
-    this.tags = new Set(data.t);
-    this.lastUpdate = data.u || 0;
-    this.demographic = data.e;
-    this.title = data.b;
-    this.language = data.l;
-    this.hentai = data.h;
-  }
-  save() {
-    // NB: Keys "a" and "c" were previously used for read chapters
-    let data = {};
-    if (this.title) data.b = this.title;
-    if (this.lastUpdate) data.u = this.lastUpdate;
-    if (this.filtered) data.f = 1;
-    if (this.tags && this.tags.size) data.t = [...this.tags].sort();
-    if (this.demographic) data.e = this.demographic;
-    if (this.language) data.l = this.language;
-    if (this.hentai) data.h = 1;
-    let s = JSON.stringify(data);
-    if (GM_getValue(this.key) == s) return;
-    GM_setValue(this.key, s);
-    console.log("Saved", this.key, data);
-  }
-  isFilteredByTag() {
-    let tagweights = Option.get("FILTERING_TAG_WEIGHTS");
-    for (let w of tagweights) {
-      let x = 0;
-      for (let tag in w) {
-        if (tag == -99) {
-          if (this.hentai) x += w[tag];
-        } else if (tag < 0) {
-          if (this.demographic == -tag) x += w[tag];
-        } else if (this.tags.has(Number(tag))) {
-          x += w[tag];
+        onOptionChanged() {
+            if (this.filterOption.get()) {
+                this.textContent = "Unfilter";
+                this.style.backgroundColor = "#0f0";
+            }
+            else {
+                this.textContent = "Filter";
+                this.style.backgroundColor = "#f00";
+            }
         }
-      }
-      if (x <= -1) return true;
-    }
-    return false;
-  }
-  isFilteredByLanguage() {
-    let filtered = Option.get("FILTERED_LANGS");
-    return filtered.has(this.language);
-  }
-  isFilteredByRegex() {
-    let filtered = Option.get("FILTERED_REGEX");
-    for (let filter of filtered) {
-      let re = new RegExp(filter);
-      if (re.test(this.title)) return true;
-    }
-    return false;
-  }
-  filterType() { // Returns 0 for not filtered, 1 for specific filter, 2 for tags, 3 for language, 4 for regex
-    if (this.filtered) return 1;
-    if (this.isFilteredByTag()) return 2;
-    if (this.isFilteredByLanguage()) return 3;
-    if (this.isFilteredByRegex()) return 4;
-    return 0;
-  }
-  async update() {
-    if (Date.now() - this.lastUpdate > Manga.updateInterval) {
-      return await this.fetch();
-    }
-  }
-  async fetch() {
-    let response = await fetch_throttled("https://api.mangadex.org/v2/manga/" + this.id);
-    if (!response.ok) throw response;
-    let json = await response.json();
-    this.load();
-    let data = json.data;
-    let doc = new DOMParser().parseFromString(data.title, "text/html");
-    this.title = doc.documentElement.textContent;
-    this.tags = new Set(data.tags);
-    this.demographic = data.publication.demographic;
-    this.lastUpload = data.lastUploaded;
-    this.cover = data.mainCover;
-    this.lastUpdate = Date.now();
-    this.language = data.publication.language;
-    this.hentai = data.isHentai;
-    this.save();
-  }
-}
-
-// Corresponds to one manga entry in /updates pages
-class MangaUpdateBatch {
-  static updateRowToUpdate(updateRow) {
-    let datestring = updateRow.children[6].children[0].dateTime.slice(0,-4)
-    let date = new Date(datestring);
-    let timezonediff = date.getTime() - Date.parse(date.toLocaleString("en-US", {timeZone: "GMT"}));
-    let link = updateRow.children[1].children[1];
-    let chapterId = Number(link.href.match(/\/chapter\/(\d+)/)[1]);
-    return {
-      link: link,
-      flag: updateRow.children[2].children[0],
-      group: updateRow.children[3].children[0].children[0],
-      uploader: updateRow.children[4].children[0],
-      time: date.getTime() + timezonediff,
-      chapterId: chapterId
-    };
-  }
-  constructor(rows) {
-    let href = rows[0].children[2].children[0].children[1].href;
-    let mid = Number(href.match(/\d+/));
-    this.manga = new Manga(mid);
-    this.manga.load();
-    this.manga.cover = rows[0].children[0].children[0].children[0].children[0].src;
-    this.manga.title = rows[0].children[2].children[0].children[1].textContent;
-    if (rows[0].querySelector(".badge-danger")) this.manga.hentai = true;
-    this.manga.save();
-    this.updates = [];
-    for (let i = 1; i < rows.length; ++i) {
-      this.updates.push(MangaUpdateBatch.updateRowToUpdate(rows[i]));
-    }
-  }
-  extend(that) {
-    console.assert(this.manga.id == that.manga.id);
-    let chapterMap = {};
-    for (let i = 0; i < this.updates.length; ++i) {
-      chapterMap[this.updates[i].chapterId] = i;
-    }
-    for (let u of that.updates) {
-      let i = chapterMap[u.chapterId];
-      if (i === undefined) {
-        this.updates.push(u);
-      } else if (u.time > this.updates[i].time) {
-        this.updates[i] = u;
-      }
-    }
-    this.updates.sort((a,b) => b.chapterId - a.chapterId);
-  }
-  hash() {
-    let s = this.manga.id;
-    if (this.updates.length) {
-      s += ":" + this.updates[0].chapterId;
-    }
-    return s;
-  }
-  static batchRows(rows) { // Returns an array of MangaUpdateBatches, input is an array or <tr>
-    let batches = [];
-    for (let i = 0; i < rows.length; ++i) {
-      let span = rows[i].children[0].rowSpan;
-      if (span > 1) {
-        batches.push(new MangaUpdateBatch(rows.slice(i, i+span)));
-        i += span - 1;
-      }
-    }
-    return batches;
-  }
-}
-
-function timestring(time) {
-  let td = Date.now() - time;
-  let suffix = " sec";
-  td /= 1000;
-  if (Math.abs(td) > 60) {
-    td /= 60;
-    suffix = " min";
-    if (Math.abs(td) > 60) {
-      td /= 60;
-      suffix = " hr";
-      if (Math.abs(td) > 24) {
-        td /= 24;
-        suffix = " day";
-      }
-    }
-  }
-  td = Math.floor(td);
-  return td + suffix + (td > 1 ? "s" : "");
-}
-
-class FrontPageMangaUpdate {
-  static timeTextUpdateThresholds = [60*1000, 60*60*1000, 24*60*60*1000];
-  constructor(mangaUpdateBatch) {
-    this.data = mangaUpdateBatch;
-    this.constructDiv();
-    this.update();
-  }
-  constructDiv() {
-    this.div = document.createElement("div");
-    this.div.className = "col-md-6 border-bottom p-2";
-    this.div.appendChild(this.constructCover());
-    this.div.appendChild(this.constructTitle());
-    this.div.appendChild(this.constructFilterButton());
-    this.div.appendChild(this.constructChapterLink());
-    this.div.appendChild(this.constructGroupLink());
-    this.div.appendChild(this.constructTimeText());
-    return this.div;
-  }
-  constructCover() {
-    let coverContainer = document.createElement("div");
-    coverContainer.className = "hover sm_md_logo rounded float-left mr-2";
-    let coverLink = document.createElement("a");
-    coverLink.href = "/title/" + this.data.manga.id;
-    coverContainer.appendChild(coverLink);
-    this.coverImage = document.createElement("img");
-    coverLink.appendChild(this.coverImage);
-    this.coverImage.className = "rounded max-width";
-    return coverContainer;
-  }
-  constructTitle() {
-    let titleContainer = document.createElement("div");
-    titleContainer.className = "pt-0 pb-1 mb-1 border-bottom d-flex align-items-center flex-nowrap";
-    let bookIcon = document.createElement("span");
-    titleContainer.appendChild(bookIcon);
-    bookIcon.className = "fas fa-book fa-fw mr-1";
-    bookIcon.setAttribute("aria-hidden", true);
-    this.titleElement = document.createElement("a");
-    titleContainer.appendChild(this.titleElement);
-    this.titleElement.className = "manga_title text-truncate";
-    this.titleElement.href = "/title/" + this.data.manga.id;
-    if (this.data.manga.hentai) {
-      let hentaiIcon = document.createElement("span");
-      titleContainer.appendChild(hentaiIcon);
-      hentaiIcon.className = "badge badge-danger ml-1";
-      hentaiIcon.textContent = "H";
-    }
-    return titleContainer;
-  }
-  constructFilterButton() {
-    this.filterButton = document.createElement("a");
-    this.filterButton.textContent = "Filter";
-    this.filterButton.style.position = "absolute";
-    this.filterButton.style.right = 0;
-    this.filterButton.style.bottom = 0;
-    this.filterButton.className = "button";
-    this.filterButton.onclick = ()=>{
-      this.data.manga.load();
-      this.data.manga.filtered = true;
-      this.data.manga.save();
-    }
-    return this.filterButton;
-  }
-  constructChapterLink() {
-    let container = document.createElement("div");
-    container.className = "py-0 mb-1 row no-gutters align-items-center flex-nowrap";
-    let icon = document.createElement("span");
-    container.appendChild(icon);
-    icon.className = "far fa-file fa-fw col-auto mr-1";
-    icon.setAttribute("aria-hidden", "");
-    this.chapterLink = document.createElement("a");
-    container.appendChild(this.chapterLink);
-    this.chapterLink.className = "text-truncate chapter";
-    let flagContainer = document.createElement("div");
-    container.appendChild(flagContainer);
-    flagContainer.className = "ml-1";
-    this.chapterFlag = document.createElement("span");
-    flagContainer.appendChild(this.chapterFlag);
-    return container;
-  }
-  constructGroupLink() {
-    let container = document.createElement("div");
-    container.className = "text-truncate py-0 mb-1";
-    let icon = document.createElement("span");
-    container.appendChild(icon);
-    icon.className = "fas fa-users fa-fw";
-    icon.setAttribute("aria-hidden", "");
-    let spacing = document.createTextNode(" ");
-    container.appendChild(spacing);
-    this.groupLink = document.createElement("a");
-    container.appendChild(this.groupLink);
-    return container;
-  }
-  constructTimeText() {
-    let container = document.createElement("div");
-    container.className = "text-truncate py-0 mb-1";
-    let icon = document.createElement("span");
-    container.appendChild(icon);
-    icon.className = "far fa-clock fa-fw";
-    icon.setAttribute("aria-hidden", "");
-    this.timeElement = document.createTextNode("");
-    container.appendChild(this.timeElement);
-    return container;
-  }
-  update() {
-    this.data.manga.load();
-    this.hidden = this.data.manga.filterType();
-    if (Date.now() - this.data.manga.lastUpdate > Manga.refreshInterval) this.div.style.backgroundColor = "#f002";
-    this.coverImage.src = this.data.manga.cover;
-    this.titleElement.title = this.data.manga.title;
-    this.titleElement.textContent = this.data.manga.title;
-    let u = this.data.updates[0];
-    this.chapterLink.href = u.link.href;
-    this.chapterLink.textContent = u.link.textContent;
-    this.chapterFlag.className = u.flag.className;
-    this.chapterFlag.title = u.flag.title;
-    this.groupLink.href = u.group.href;
-    this.groupLink.textContent = u.group.textContent;
-    this.time = u.time;
-    this.setTimeTextUpdater();
-  }
-  updateTime() {
-    this.timeElement.textContent = " " + timestring(this.time);
-  }
-  select(scrollIntoView = true) {
-    this.titleElement.focus({preventScroll: true});
-    if (scrollIntoView) this.div.scrollIntoView({behavior: "smooth", block: "center", inline: "center"});
-  }
-  static compare(a, b) {
-    if (a.data.updates.length && b.data.updates.length) {
-      return a.data.updates[0].time - b.data.updates[0].time;
-    }
-    return b.data.updates.length - a.data.updates.length || b.data.manga.id - a.data.manga.id;
-  }
-  static getElementContainer(element) { // Returns the div.col-md-6 that contains the given DOM element, or undefined if it doesn't exist
-    while (!element.classList.contains("col-md-6")) {
-      element = element.parentNode;
-      if (!element) return;
-    }
-    return element;
-  }
-  setTimeTextUpdater() {
-    let tickerFunc = () => {
-      this.updateTime();
-      let timeDiff = Date.now() - this.time;
-      let updateInterval = 1000; // milliseconds
-      for (let threshold of FrontPageMangaUpdate.timeTextUpdateThresholds) {
-        if (timeDiff < threshold) break;
-        updateInterval = threshold;
-      }
-      let untilNextUpdate = updateInterval - timeDiff % updateInterval + 500;
-      this.timeTextUpdaterId = setTimeout(tickerFunc, untilNextUpdate);
-    }
-    if (this.timeTextUpdaterId) clearTimeout(this.timeTextUpdaterId);
-    if (this.hidden) return;
-    tickerFunc();
-  }
-}
-
-class FrontPageControlDiv {
-  constructor(parent) {
-    this.time = -Infinity;
-    this.parent = parent;
-    this.nextFetchedPage = 1;
-    // Create DOM elements
-    this.div = document.createElement("div");
-    this.div.className = "col-md-6 border-bottom p-2";
-    let coverContainer = document.createElement("div");
-    this.div.appendChild(coverContainer);
-    coverContainer.className = "hover sm_md_logo rounded float-left mr-2";
-    this.loadingIcon = document.createElement("div");
-    coverContainer.appendChild(this.loadingIcon);
-    this.loadingIcon.className = "fas fa-circle-notch fa-spin";
-    this.loadingIcon.style.fontSize = "xxx-large";
-    this.div.appendChild(this.constructRefreshButton());
-    this.div.appendChild(document.createElement("br"));
-    this.div.appendChild(this.constructLoadMoreButton());
-    this.setLoading(false);
-  }
-  constructRefreshButton() {
-    this.lastRefresh = Date.now();
-    let refreshButton = document.createElement("button");
-    refreshButton.update = () => refreshButton.textContent = "Refreshed " + timestring(this.lastRefresh) + " ago";
-    refreshButton.addEventListener("click", () => this.fetchFirstPages());
-    this.refreshButton = refreshButton;
-    this.setTimeTextUpdater();
-    return refreshButton;
-  }
-  constructLoadMoreButton() {
-    let loadMoreButton = document.createElement("button");
-    loadMoreButton.update = () => {
-      if (this.lastPageFetched) {
-        loadMoreButton.textContent = "No more pages to fetch";
-      } else {
-        loadMoreButton.textContent = "Load page " + this.nextFetchedPage;
-      }
-    }
-    loadMoreButton.update();
-    loadMoreButton.addEventListener("click", () => this.addNextUpdatePage());
-    this.loadMoreButton = loadMoreButton;
-    return loadMoreButton;
-  }
-  setLoading(val) {
-    if (val) {
-      this.refreshButton.disabled = true;
-      this.loadMoreButton.disabled = true;
-      if (this.parent.selection == this) this.activeButton = document.activeElement;
-      this.refreshButton.blur(); // Workaround for https://bugzilla.mozilla.org/show_bug.cgi?id=706773
-      this.loadMoreButton.blur();
-      this.loadingIcon.style.display = "";
-    } else {
-      this.refreshButton.disabled = false;
-      if (!this.lastPageFetched) this.loadMoreButton.disabled = false;
-      if (this.parent.selection == this) {
-        this.select(false);
-        if (this.activeButton) {
-          this.activeButton.focus();
-          delete this.activeButton;
+        static initialize() {
+            let style = document.createElement("style");
+            style.innerHTML = `
+            .${this.typeName} {
+                padding: 5px;
+                border-radius: 10px;
+                height: 20px;
+                text-align: center;
+                vertical-align: middle;
+                line-height: 12px;
+            }
+        `;
+            document.head.appendChild(style);
+            customElements.define(this.typeName, this, { extends: "button" });
         }
-      }
-      this.loadingIcon.style.display = "none";
     }
-    this.loadMoreButton.update();
-  }
-  select(scrollIntoView = true) {
-    document.activeElement.blur();
-    this.loadMoreButton.focus({preventScroll: true});
-    if (scrollIntoView) this.div.scrollIntoView({behavior: "smooth", block: "center", inline: "center"});
-  }
-  async fetchUpdatePage(page) {
-    let html;
-    for (let i = 1;; ++i) {
-      try {
-        let response = await fetch_throttled("/updates/" + page);
-        if (!response.ok) throw response;
-        html = await response.text();
-        break;
-      } catch (e) {
-        console.log("fetchUpdatePage", e);
-        await sleep(i * 5000);
-      }
+    FilterButton.typeName = "filter-button";
+    class LanguageFilterButton extends FilterButton {
+        constructor(language) {
+            super(new SetIndicator(FILTERED_LANGS, language));
+            this.classList.add(LanguageFilterButton.typeName);
+        }
+        onOptionChanged() {
+            if (this.filterOption.get()) {
+                this.textContent = "Unfilter language";
+                this.style.backgroundColor = "#0f0";
+            }
+            else {
+                this.textContent = "Filter language";
+                this.style.backgroundColor = "#f00";
+            }
+        }
     }
-    let template = document.createElement("template");
-    template.innerHTML = html;
-    let rows = [...template.content.querySelectorAll("tr")];
-    return MangaUpdateBatch.batchRows(rows);
-  }
-  async addNextUpdatePage() {
-    this.setLoading(true);
-    let updates = await this.fetchUpdatePage(this.nextFetchedPage);
-    if (!updates.length) {
-      this.lastPageFetched = true;
-      this.setLoading(false);
-      return;
+    LanguageFilterButton.typeName = "language-filter-button";
+
+    class TagFilteredBool extends BoolWrapper {
+        constructor(tags) {
+            super(new Variable(false));
+            this.tags = tags;
+            this.onWeightChanged = () => {
+                for (let rule of FILTERING_TAG_WEIGHTS) {
+                    let w = 0;
+                    for (let tag of this.tags) {
+                        w += Number(rule[tag] ?? 0);
+                    }
+                    if (w <= -1) {
+                        return super.set(true);
+                    }
+                }
+                return super.set(false);
+            };
+            FILTERING_TAG_WEIGHTS.addChangeListener(this.onWeightChanged);
+            this.tags.addChangeListener(this.onWeightChanged);
+            this.onWeightChanged();
+        }
+        destroy() {
+            FILTERING_TAG_WEIGHTS.removeChangeListener(this.onWeightChanged);
+            this.tags.removeChangeListener(this.onWeightChanged);
+            super.destroy();
+        }
     }
-    this.nextFetchedPage += 1;
-    for (let u of updates) {
-      for (let i = 1;; ++i) {
+    class FilterStatus extends Variable {
+        constructor(filtered, tags, language) {
+            super(0);
+            this.onVariableChange = () => {
+                if (this.filtered.get()) {
+                    return this.set(1);
+                }
+                if (this.tagFiltered.get()) {
+                    return this.set(2);
+                }
+                if (this.langFiltered.get()) {
+                    return this.set(3);
+                }
+                this.set(0);
+            };
+            this.filtered = filtered;
+            this.tagFiltered = new TagFilteredBool(tags);
+            this.filtered.addChangeListener(this.onVariableChange);
+            this.tagFiltered.addChangeListener(this.onVariableChange);
+            this.langFiltered = new SetIndicator(FILTERED_LANGS, language);
+            this.langFiltered.addChangeListener(this.onVariableChange);
+            this.onVariableChange();
+        }
+        destroy() {
+            this.filtered.removeChangeListener(this.onVariableChange);
+            this.tagFiltered.destroy();
+            super.destroy();
+        }
+    }
+    class FilterIndicator extends HTMLParagraphElement {
+        constructor(filterStatus, filterTexts = FilterIndicator.filterTexts) {
+            super();
+            this.filterStatus = filterStatus;
+            this.filterTexts = filterTexts;
+            this.update = () => {
+                this.textContent = this.filterTexts.get(this.filterStatus.get()) ?? "";
+            };
+            this.filterStatus.addChangeListener(this.update);
+            this.update();
+        }
+        static initialize() {
+            customElements.define("filter-indicator", FilterIndicator, { extends: "p" });
+        }
+    }
+    FilterIndicator.filterTexts = new Map([
+        [0, "Not filtered"],
+        [1, "Filtered"],
+        [2, "Filtered by tags"],
+        [3, "Filtered by language"]
+    ]);
+    class Manga {
+        constructor(id) {
+            this.id = id;
+            this.variable = new GMOption(String(id));
+            this.title = new ObjectField(this.variable, "b");
+            this.filtered = new BoolWrapper(new ObjectField(this.variable, "f"));
+            this.tags = new JsonSetWrapper(new ArrayWrapper(new ObjectField(this.variable, "t")));
+            this.lastUpdate = new ObjectField(this.variable, "u");
+            this.demographic = new ObjectField(this.variable, "e");
+            this.language = new ObjectField(this.variable, "l");
+            //this.hentai = new BoolWrapper(new ObjectField(this.variable, "h"));
+            this.filterStatus = new FilterStatus(this.filtered, this.tags, this.language);
+            this.cover = new ObjectField(this.variable, "c");
+        }
+        updateFrom(json) {
+            console.assert(this.id === json.id);
+            this.title.set(json.attributes.title.en);
+            let tags = new Set();
+            for (let tag of json.attributes.tags) {
+                tags.add(tag.attributes.name.en);
+            }
+            this.tags.set(tags);
+            this.lastUpdate.set(Date.now());
+            this.demographic.set(json.attributes.publicationDemographic);
+            this.language.set(json.attributes.originalLanguage);
+        }
+        destroy() {
+            this.cover.destroy();
+            this.filterStatus.destroy();
+            this.language.destroy();
+            this.demographic.destroy();
+            this.lastUpdate.destroy();
+            this.tags.destroy();
+            this.filtered.destroy();
+            this.title.destroy();
+            this.variable.destroy();
+        }
+    }
+    Manga.updateInterval = 30 * 24 * 60 * 60 * 1000;
+
+    function getStyleContainer(context) {
+        let container = context.getRootNode();
+        if (container instanceof Document) {
+            return container.head;
+        }
+        return container;
+    }
+    function addStyle(context, styleText) {
+        let style = document.createElement("style");
+        style.innerHTML = styleText;
+        getStyleContainer(context).appendChild(style);
+        return style;
+    }
+
+    class ChapterRow extends HTMLTableRowElement {
+        constructor(chapter, manga) {
+            super();
+            this.chapter = chapter;
+            this.manga = manga;
+            this.coverFetched = false;
+            this.onFilterUpdate = () => {
+                if (this.manga.filterStatus.get()) {
+                    this.classList.add("filtered-manga");
+                }
+                else {
+                    this.classList.remove("filtered-manga");
+                }
+            };
+            this.classList.add("chapter-row");
+            this.cover = document.createElement("img");
+            if (manga.cover.get())
+                this.setCover(manga.cover.get());
+            this.chapterTitle = document.createElement("a");
+            this.chapterTitle.href = `/chapter/${chapter.id}`;
+            this.chapterTitle.textContent = `v${chapter.attributes.volume ?? "?"}c${chapter.attributes.chapter ?? "?"} - ${chapter.attributes.title ?? "NO TITLE"}`;
+            this.mangaTitle = document.createElement("a");
+            this.mangaTitle.href = `/title/${manga.id}`;
+            this.mangaTitle.textContent = manga.title.get();
+            this.filterButton = new FilterButton(manga.filtered);
+            this.addTd(this.cover);
+            this.addTd(this.chapterTitle);
+            this.addTd(this.mangaTitle, this.filterButton);
+            this.manga.filterStatus.addChangeListener(this.onFilterUpdate);
+            this.onFilterUpdate();
+        }
+        addTd(...content) {
+            let td = document.createElement("td");
+            for (let element of content) {
+                td.appendChild(element);
+            }
+            this.appendChild(td);
+        }
+        setCover(filename) {
+            this.cover.src = `https://uploads.mangadex.org/covers/${this.manga.id}/${filename}.256.jpg`;
+            this.manga.cover.set(filename);
+            this.coverFetched = true;
+        }
+        static initialize() {
+            FilterButton.initialize();
+            customElements.define("chapter-row", ChapterRow, { extends: "tr" });
+        }
+    }
+    class ChapterTable extends HTMLTableElement {
+        constructor() {
+            super(...arguments);
+            this.mangaCache = new Map();
+            this.offset = 0;
+            this.chapters = new Set();
+        }
+        addChapter(chapter, manga) {
+            if (this.chapters.has(chapter.id))
+                return;
+            this.chapters.add(chapter.id);
+            if (!this.mangaCache.has(manga.id)) {
+                let manga_ = new Manga(manga.id);
+                this.mangaCache.set(manga.id, manga_);
+                manga_.updateFrom(manga);
+            }
+            let row = new ChapterRow(chapter, this.mangaCache.get(manga.id));
+            this.appendChild(row);
+            this.classList.add("chapter-table");
+        }
+        async fetchMore() {
+            let chapters = await fetchRecentChapters(this.offset);
+            this.offset += 100;
+            for (let { chapter, manga } of chapters) {
+                this.addChapter(chapter, manga);
+            }
+            this.fetchCovers();
+        }
+        async fetchCovers() {
+            let mangasToFetchSet = new Set();
+            for (let chapterRow of this.childNodes) {
+                if (chapterRow.coverFetched == true)
+                    continue;
+                mangasToFetchSet.add(chapterRow.manga.id);
+            }
+            let coverMap = await fetchCovers(...mangasToFetchSet);
+            for (let chapterRow of this.childNodes) {
+                if (coverMap.has(chapterRow.manga.id)) {
+                    chapterRow.setCover(coverMap.get(chapterRow.manga.id));
+                }
+            }
+        }
+        static initialize() {
+            ChapterRow.initialize();
+            customElements.define("chapter-table", ChapterTable, { extends: "table" });
+        }
+    }
+    class ChapterTableContainer extends HTMLDivElement {
+        constructor() {
+            super();
+            this.table = new ChapterTable();
+            this.table.fetchMore();
+            this.addMoreButton = document.createElement("button");
+            this.addMoreButton.textContent = "Fetch more";
+            this.addMoreButton.addEventListener("click", () => this.table.fetchMore());
+            this.showFilteredButton = document.createElement("button");
+            this.showFilteredButton.textContent = "Show filtered";
+            this.showFilteredButton.addEventListener("click", () => this.toggleShowFiltered());
+            this.showFilteredButton.style.position = "absolute";
+            this.showFilteredButton.style.top = "0";
+            this.showFilteredButton.style.right = "0";
+            this.appendChild(this.table);
+            this.appendChild(this.addMoreButton);
+            this.appendChild(this.showFilteredButton);
+            this.filterStyle = addStyle(this, `
+            .filtered-manga {
+                display: none;
+            }
+        `);
+        }
+        toggleShowFiltered() {
+            if (this.filterStyle.isConnected) {
+                this.filterStyle.parentNode.removeChild(this.filterStyle);
+                this.showFilteredButton.textContent = "Hide filtered";
+            }
+            else {
+                getStyleContainer(this).appendChild(this.filterStyle);
+                this.showFilteredButton.textContent = "Show filtered";
+            }
+        }
+        static initialize() {
+            ChapterTable.initialize();
+            customElements.define("chapter-table-container", ChapterTableContainer, { extends: "div" });
+        }
+    }
+
+    let tagsCached = null;
+    async function getTags() {
+        if (tagsCached === null) {
+            tagsCached = [];
+            let tagsFetched = await fetchThrottled("https://api.mangadex.org/manga/tag");
+            let json = await tagsFetched.json();
+            for (let tag of json) {
+                tagsCached.push(tag.data.attributes.name.en);
+            }
+        }
+        return tagsCached;
+    }
+    class TagWeightInput extends HTMLInputElement {
+        constructor(option) {
+            super();
+            this.option = option;
+            this.onValueChanged = () => {
+                this.option.set(this.value || undefined);
+            };
+        }
+        connectedCallback() {
+            this.value = this.option.get() ?? "";
+            this.addEventListener("change", this.onValueChanged);
+        }
+        disconnectedCallback() {
+            this.removeEventListener("change", this.onValueChanged);
+        }
+    }
+    customElements.define("tag-weight-input", TagWeightInput, { extends: "input" });
+    class TagWeightColumn {
+        constructor(tags, option) {
+            this.tags = tags;
+            this.option = option;
+            this.cells = [];
+            for (let tag of tags) {
+                let td = document.createElement("td");
+                let opt = new ObjectField(option, tag);
+                let input = new TagWeightInput(opt);
+                td.appendChild(input);
+                this.cells.push({ td: td, input: input });
+            }
+        }
+        destroy() {
+            for (let { input } of this.cells) {
+                input.option.destroy();
+            }
+            this.cells = [];
+        }
+    }
+    class TagWeightTable extends HTMLTableElement {
+        constructor() {
+            super();
+            this.columns = [];
+            this.delayed_construct();
+        }
+        async delayed_construct() {
+            this.createRow("Tag name");
+            let tags = await getTags();
+            tags.sort();
+            for (let i = 0; i < FILTERING_TAG_WEIGHTS.length; ++i) {
+                let opt = new ArrayField(FILTERING_TAG_WEIGHTS, i);
+                this.columns.push(new TagWeightColumn(tags, opt));
+            }
+            for (let tag of tags) {
+                this.createRow(tag);
+            }
+            for (let i = 0; i < this.columns.length; ++i) {
+                {
+                    let removeColTd = document.createElement("td");
+                    let removeColBtn = document.createElement("button");
+                    removeColBtn.addEventListener("click", () => this.removeColumn(i));
+                    removeColBtn.textContent = "Remove";
+                    removeColTd.appendChild(removeColBtn);
+                    this.rows[0].appendChild(removeColTd);
+                }
+                let col = this.columns[i];
+                for (let j = 0; j < col.cells.length; ++j) {
+                    this.rows[j + 1].appendChild(col.cells[j].td);
+                }
+            }
+            let addRowBtn = document.createElement("button");
+            addRowBtn.addEventListener("click", () => this.addColumn());
+            addRowBtn.textContent = "Add";
+            this.rows[0].appendChild(document.createElement("td")).appendChild(addRowBtn);
+        }
+        addColumn() {
+            this.destroy();
+            FILTERING_TAG_WEIGHTS.push({});
+            this.delayed_construct();
+        }
+        removeColumn(colIndex) {
+            this.destroy();
+            FILTERING_TAG_WEIGHTS.pop(colIndex);
+            this.delayed_construct();
+        }
+        createRow(firstCol) {
+            let tr = document.createElement("tr");
+            let td = document.createElement("td");
+            tr.appendChild(td);
+            td.textContent = firstCol;
+            this.appendChild(tr);
+        }
+        destroy() {
+            for (let col of this.columns) {
+                col.destroy();
+                col.option.destroy();
+            }
+            this.columns = [];
+            this.innerHTML = "";
+        }
+    }
+    customElements.define("tag-weight-table", TagWeightTable, { extends: "table" });
+
+    let dashboardCache = null;
+    let origBody = null;
+    class Dashboard extends HTMLBodyElement {
+        constructor() {
+            super();
+            this.header = document.createElement("nav");
+            this.content = document.createElement("div");
+            this.recentChapterTable = null;
+            this.tagWeightTable = null;
+            this.id = "MDFDashboard";
+            this.shadow = this.attachShadow({ mode: "open" });
+            this.createHeader();
+            this.shadow.appendChild(this.content);
+            this.showRecent();
+            addStyle(this.shadow, `
+            #MDFDashboard {
+                background-color: #fff;
+            }
+            #MDFDashboard nav {
+                border-bottom: 5px solid black;
+            }
+            #MDFDashboard nav button {
+                padding: 3px;
+            }
+            #MDFDashboard table {
+                border-collapse: collapse;
+            }
+            #MDFDashboard td {
+                border: 1px solid black;
+            }
+            .chapter-table {
+                border-collapse: collapse;
+            }
+            .chapter-table td {
+                border: 1px solid black;
+                padding: 0 5px 0 5px;
+            }
+            .chapter-row img {
+                height: 100px;
+                width: 100px;
+                object-fit: contain;
+            }
+        `);
+        }
+        createHeader() {
+            function createButton(text, callback) {
+                let btn = document.createElement("button");
+                btn.textContent = text;
+                btn.addEventListener("click", callback);
+                return btn;
+            }
+            this.header.appendChild(createButton("Recent updates", () => this.showRecent()));
+            this.header.appendChild(createButton("Tags", () => this.showTags()));
+            this.header.appendChild(createButton("Close", () => this.hide()));
+            this.shadow.appendChild(this.header);
+        }
+        showRecent() {
+            if (this.currentView) {
+                this.content.removeChild(this.currentView);
+                this.currentView = null;
+            }
+            if (this.recentChapterTable === null) {
+                ChapterTableContainer.initialize();
+                this.recentChapterTable = new ChapterTableContainer();
+            }
+            this.currentView = this.content.appendChild(this.recentChapterTable);
+        }
+        showTags() {
+            if (this.currentView) {
+                this.content.removeChild(this.currentView);
+                this.currentView = null;
+            }
+            if (this.tagWeightTable === null) {
+                this.tagWeightTable = new TagWeightTable();
+            }
+            this.currentView = this.content.appendChild(this.tagWeightTable);
+        }
+        hide() {
+            document.body = origBody;
+        }
+        static show() {
+            dashboardCache ??= new Dashboard();
+            origBody = document.body;
+            document.body = dashboardCache;
+        }
+        static initialize() {
+            if (this.initialized) {
+                console.warn("Called Dashboard.initialize twice.");
+                return;
+            }
+            this.initialized = true;
+            customElements.define("mdf-dashboard", Dashboard, { extends: "body" });
+        }
+        static getShowButton() {
+            let btn = document.createElement("button");
+            btn.classList.add("mdf-dashboard-btn");
+            btn.addEventListener("click", this.show);
+            btn.textContent = "Show MDF Dashboard";
+            return btn;
+        }
+    }
+    Dashboard.initialized = false;
+
+    class NavMenu extends HTMLElement {
+        constructor(addDashboardButton = true) {
+            super();
+            this.shadow = this.attachShadow({ mode: "open" });
+            this.style.position = "fixed";
+            this.style.top = "0";
+            this.style.right = "0";
+            this.style.zIndex = "99999";
+            this.style.backgroundColor = "#fff";
+            if (addDashboardButton) {
+                Dashboard.initialize();
+                this.emplaceButton("Dashboard", Dashboard.show);
+            }
+            addStyle(this.shadow, `
+            button {
+                display: block;
+                width: 100%;
+            }
+        `);
+        }
+        appendButton(button) {
+            this.shadow.appendChild(button);
+            /*let div = document.createElement("div");
+            this.shadow.appendChild(div).appendChild(button);*/
+        }
+        appendChild(node) {
+            return this.shadow.appendChild(node);
+        }
+        emplaceButton(text, callback) {
+            let button = document.createElement("button");
+            button.textContent = text;
+            button.addEventListener("click", callback);
+            this.appendButton(button);
+        }
+        static initialize() {
+            customElements.define("nav-menu", NavMenu);
+        }
+    }
+
+    async function main$3() {
+        NavMenu.initialize();
+        let nav = new NavMenu();
+        document.body.appendChild(nav);
+        Dashboard.show();
+    }
+
+    function getMangaId() {
+        let m = location.pathname.match("^/title/(.*)$");
+        if (!m)
+            throw Error("Unknown mangaId");
+        return m[1];
+    }
+    function main$2() {
+        // Create navmenu
+        NavMenu.initialize();
+        let menu = new NavMenu(false);
+        document.body.appendChild(menu);
+        // Get opened manga
+        let mangaId = getMangaId();
+        let manga = new Manga(mangaId);
+        // Manga filter
+        {
+            FilterButton.initialize();
+            menu.appendButton(new FilterButton(manga.filtered));
+        }
+        // Lang filter
+        if (manga.language.get()) {
+            LanguageFilterButton.initialize();
+            menu.appendButton(new LanguageFilterButton(manga.language));
+        }
+        // Filter indicator
+        FilterIndicator.initialize();
+        menu.appendChild(new FilterIndicator(manga.filterStatus, new Map([[2, "Filtered by tags"]])));
+    }
+
+    async function updateOldMangaIds(logger) {
+        logger.addLine("Updating old manga IDs to new format. Please wait...");
+        // @ts-expect-error
+        let keys = GM_listValues();
+        let filteredKeys = [];
+        for (let key of keys) {
+            let id = Number(key);
+            if (!Number.isFinite(id))
+                continue;
+            // @ts-expect-error
+            let val = JSON.parse(GM_getValue(id));
+            if (val.f) {
+                filteredKeys.push(id);
+                logger.addLine("Will update key " + id);
+            }
+            else {
+                // @ts-expect-error
+                GM_deleteValue(id);
+                logger.addLine("Removed useless key " + id);
+            }
+        }
+        logger.addLine("Fetching updated manga IDs...");
+        let keyMap = new Map();
+        while (filteredKeys.length) {
+            logger.addLine(`Fetching keys: ${filteredKeys.length} remaining`);
+            let response = await fetch("https://api.mangadex.org/legacy/mapping", {
+                method: "POST",
+                body: JSON.stringify({
+                    type: "manga",
+                    ids: filteredKeys.splice(0, 500)
+                }),
+                headers: new Headers({
+                    "Content-Type": "application/json"
+                })
+            });
+            logger.addLine("Fetch success");
+            let json = await response.json();
+            for (let entry of json) {
+                if (entry.result != "ok")
+                    throw Error("Fetch failed");
+                let oldKey = entry.data.attributes.legacyId;
+                let newKey = entry.data.attributes.newId;
+                keyMap.set(oldKey, newKey);
+            }
+        }
+        logger.addLine("Successfully fetched key map.");
+        logger.addLine("Updating manga IDs...");
+        for (let [oldKey, newKey] of keyMap.entries()) {
+            let manga = new Manga(newKey);
+            manga.filtered.set(true);
+            logger.addLine(`Updated key ${oldKey} to ${newKey}.`);
+            manga.destroy();
+            // @ts-expect-error
+            GM_deleteValue(oldKey);
+        }
+        logger.addLine("Key update complete.");
+    }
+    class VersionPopup extends HTMLDivElement {
+        constructor() {
+            super();
+            this.classList.add("version-popup");
+            this.show();
+        }
+        addLine(text) {
+            let p = document.createElement("p");
+            p.textContent = text;
+            this.appendChild(p);
+            p.scrollIntoView();
+        }
+        show() {
+            document.body.appendChild(this);
+        }
+        hide() {
+            document.body.removeChild(this);
+        }
+        static initialize() {
+            let style = document.createElement("style");
+            style.innerHTML = `
+            .version-popup {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100%;
+                width: 100%;
+                z-index: 999999;
+                background-color: #fff;
+                overflow: scroll;
+            }
+        `;
+            document.head.appendChild(style);
+            customElements.define("version-popup", VersionPopup, { extends: "div" });
+        }
+    }
+    async function main$1() {
+        const newDbVersion = 22;
+        // @ts-expect-error
+        let oldDbVersion = GM_getValue("VERSION", 0);
+        if (newDbVersion == oldDbVersion)
+            return;
+        VersionPopup.initialize();
+        let popup = new VersionPopup();
+        popup.addLine("Updating database. Please wait...");
         try {
-          await u.manga.update();
-          this.parent.addMangaUpdate(u);
-        } catch (e) {
-          if (e.status >= 502 && e.status <= 504) {
-            await sleep(i * 1000);
-            continue;
-          }
-          console.log("addNextUpdatePage", e);
+            popup.addLine("Removing old options.");
+            // @ts-expect-error
+            GM_deleteValue("__OPTIONS");
+            await updateOldMangaIds(popup);
         }
-        break;
-      }
-    }
-    this.setLoading(false);
-    return updates[updates.length - 1].updates[0].time;
-  }
-  async fetchUntilTime(time) { // Fetches pages until the oldest update is earlier than the time parameter
-    while (await this.addNextUpdatePage() >= time);
-  }
-  async fetchFirstPages() { // Fetches pages until hitting an already seen update
-    this.setLoading(true);
-    let seen = new Set(); // Used to prevent found mangas rolling to next page and stopping fetches because "old" update is seen
-    let seenCount = 0; // Counts how many manga were found in previous calls
-    for (let i = 1;; ++i) {
-      let updates = await this.fetchUpdatePage(i);
-      if (!updates.length) break;
-      for (let j = 0; j < updates.length; ++j) {
-        await updates[j].manga.update();
-        if (!this.parent.addMangaUpdate(updates[j]) && !seen.has(updates[j].hash())) {
-          seenCount += 1;
+        catch (e) {
+            popup.addLine("Error while updating manga IDs.");
+            popup.addLine(e);
+            popup.addLine(JSON.stringify(e));
+            console.log(e);
+            throw e;
         }
-        seen.add(updates[j].hash());
-      }
-      if (seenCount >= 10) break;
+        popup.addLine("All updates finished.");
+        popup.hide();
+        // @ts-expect-error
+        GM_setValue("VERSION", newDbVersion);
     }
-    this.lastRefresh = Date.now();
-    this.setTimeTextUpdater();
-    this.setLoading(false);
-  }
-  setTimeTextUpdater() {
-    let tickerFunc = () => {
-      this.refreshButton.update();
-      let timeDiff = Date.now() - this.lastRefresh;
-      let updateInterval = 1000; // milliseconds
-      for (let threshold of FrontPageMangaUpdate.timeTextUpdateThresholds) {
-        if (timeDiff < threshold) break;
-        updateInterval = threshold;
-      }
-      let untilNextUpdate = updateInterval - timeDiff % updateInterval;
-      this.timeTextUpdaterId = setTimeout(tickerFunc, untilNextUpdate);
-    }
-    if (this.timeTextUpdaterId) clearTimeout(this.timeTextUpdaterId);
-    tickerFunc();
-  }
-}
 
-class FrontPageMangaList {
-  constructor(container) {
-    this.container = container;
-    this.mangas = {};
-    this.visible = [];
-    this.controlDiv = new FrontPageControlDiv(this);
-    this.addMangaIfVisible(this.controlDiv);
-  }
-  // Returns the least index i: a <= i < b such that this.visible[i].time < time, or b if no such index exists.
-  binarySearch(time, a = 0, b = this.visible.length) {
-    if (a == b) return b;
-    let m = Math.floor((a+b)/2);
-    if (time > this.visible[m].time) {
-      return this.binarySearch(time, a, m);
-    }
-    return this.binarySearch(time, m+1, b);
-  }
-  // Returns true if actually added, false if already existed and updated that
-  addMangaUpdate(mangaUpdate) {
-    let m = this.mangas[mangaUpdate.manga.id];
-    if (m) {
-      m.data.extend(mangaUpdate);
-      m.update();
-      if (!m.hidden) {
-        let i = this.visible.indexOf(m);
-        // Check if manga has changed time position due to added chapter updates.
-        if (i > 0 && this.visible[i-1].time < this.visible[i].time || i+1 < this.visible.length && this.visible[i].time < this.visible[i+1].time) {
-          this.removeVisibleManga(i);
-          this.addMangaIfVisible(m);
-        }
-      }
-      return false;
-    }
-    m = new FrontPageMangaUpdate(mangaUpdate);
-    this.mangas[m.data.manga.id] = m;
-    this.addMangaIfVisible(m);
-    let update = () => this.onStorageEvent(m.data.manga.id);
-    GM_addValueChangeListener(m.data.manga.key, update);
-    GM_addValueChangeListener(Option.dbKey, update);
-    return true;
-  }
-  removeVisibleManga(position) {
-    let [m] = this.visible.splice(position, 1);
-    this.container.removeChild(m.div);
-    m.prev.next = m.next;
-    m.next.prev = m.prev;
-    if (m == this.selection && m.next != m) {
-      this.selection = m.next;
-      this.selection.select(false);
-    }
-  }
-  addMangaIfVisible(frontPageMangaUpdate) {
-    if (frontPageMangaUpdate.hidden) return;
-    let i = this.binarySearch(frontPageMangaUpdate.time);
-    this.visible.splice(i, 0, frontPageMangaUpdate);
-    frontPageMangaUpdate.prev = this.visible[(i-1+this.visible.length) % this.visible.length];
-    frontPageMangaUpdate.next = this.visible[(i+1) % this.visible.length];
-    frontPageMangaUpdate.prev.next = frontPageMangaUpdate;
-    frontPageMangaUpdate.next.prev = frontPageMangaUpdate;
-    this.container.insertBefore(frontPageMangaUpdate.div, frontPageMangaUpdate.time > frontPageMangaUpdate.next.time ? frontPageMangaUpdate.next.div : null);
-    if (this.visible.length == 1 || this.selection == this.controlDiv && frontPageMangaUpdate.next == this.controlDiv) { // First addition is control div, second is first manga
-      this.selection = frontPageMangaUpdate;
-      this.selection.select();
-    }
-  }
-  onStorageEvent(mangaId) {
-    let m = this.mangas[mangaId];
-    if (!m) return;
-    let previouslyHidden = m.hidden;
-    m.update();
-    if (!previouslyHidden && m.hidden) {
-      let i = this.visible.indexOf(m);
-      this.removeVisibleManga(i);
-    } else if (previouslyHidden && !m.hidden) {
-      this.addMangaIfVisible(m);
-    }
-  }
-  onFocusEvent(e) {
-    let container = FrontPageMangaUpdate.getElementContainer(e.target);
-    if (container == this.controlDiv.div) {
-      this.selection = this.controlDiv;
-      return;
-    }
-    let a = container.querySelector("a.manga_title");
-    let mid = Number(a.href.match(/\d+/));
-    let m = this.mangas[mid];
-    if (m) this.selection = m;
-  }
-  onKeyDownEvent(e) {
-    if (!this.selection || !this.visible.length) return;
-    // Blocks keypresses if active element is searchbar etc
-    if (document.activeElement.tagName === "INPUT") return;
-    if (e.key == "ArrowRight" || e.key == "d") {
-      this.selection = this.selection.next;
-    } else if (e.key == "ArrowLeft" || e.key == "a") {
-      this.selection = this.selection.prev;
-    } else if (e.key == "ArrowDown" || e.key == "s") {
-      let x = this.selection.div.offsetLeft;
-      this.selection = this.selection.next;
-      while (this.selection.div.offsetLeft != x) this.selection = this.selection.next;
-    } else if (e.key == "ArrowUp" || e.key == "w") {
-      let x = this.selection.div.offsetLeft;
-      this.selection = this.selection.prev;
-      while (this.selection.div.offsetLeft != x) this.selection = this.selection.prev;
-    } else if (e.key == "Home") {
-      this.selection = this.visible[0];
-    } else if (e.key == "End") {
-      this.selection = this.visible[this.visible.length-1];
-    } else if (e.key == "f") {
-      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-      if (FrontPageMangaUpdate.getElementContainer(document.activeElement) !== this.selection.div) return;
-      if (this.selection.filterButton) {
-        this.selection.filterButton.click();
-      }
-    } else if (e.key == "c") {
-      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-      if (FrontPageMangaUpdate.getElementContainer(document.activeElement) !== this.selection.div) return;
-      if (!this.selection.data) return;
-      navigator.clipboard.writeText(this.selection.data.manga.title).then(()=>{
-        return "#0f0";
-      }, ()=>{
-        return "#f00";
-      }).then(color=>{
-        requestAnimationFrame(()=>{
-          this.selection.titleElement.style.color = color;
-          this.selection.titleElement.style.transition = "color 0s ease";
-          requestAnimationFrame(()=>{
-            this.selection.titleElement.style.color = "";
-            this.selection.titleElement.style.transitionDuration = "1s";
-          })
-        })
-      });
-    } else {
-      return;
-    }
-    this.selection.select();
-    e.stopPropagation();
-    e.preventDefault();
-  }
-}
-
-function main_manga() {
-  let mid = Number(location.pathname.match(/\d+/));
-  let manga = new Manga(mid);
-  manga.load();
-  // Get title and tags again
-  {
-    manga.title = document.querySelector("span.mx-1").textContent;
-    if (document.querySelector("h6 .badge-danger")) manga.hentai = true;
-    let tag_els = document.querySelectorAll("a.badge");
-    let re_tag = /\/genre\/(\d+)/;
-    let re_demo = /\/search\?demo_id=(\d+)/;
-    manga.tags.clear();
-    for (let el of tag_els) {
-      let m = el.href.match(re_tag);
-      if (m) {
-        let tag = Number(m[1]);
-        manga.tags.add(tag);
-      }
-    }
-    for (let el of document.querySelectorAll("a.genre")) {
-      let m = el.href.match(re_demo);
-      if (m) {
-        manga.demographic = Number(m[1]);
-      }
-    }
-    let flag = document.querySelector(".flag");
-    if (flag) {
-      let lang = flag.className.match(/flag-(\w+)/)[1];
-      manga.language = lang;
-    }
-    manga.save();
-  }
-  // Add filter button etc
-  let header = document.querySelector("h6.card-header");
-  let text = document.createElement("a");
-  text.style.marginLeft = "30px";
-  header.appendChild(text);
-  header.setAttribute("orig-color", header.style.backgroundColor)
-  header.style.backgroundImage = "none";
-  let filterButton = document.createElement("a");
-  filterButton.style.marginLeft = "30px";
-  filterButton.className = "button";
-  header.appendChild(filterButton);
-  for (let ch of document.querySelectorAll(".chapter-row .col-lg-5 a")) {
-    ch.classList.add("chapter");
-  }
-  function redraw() {
-    manga.load();
-    filterButton.textContent = manga.filtered ? "Unfilter" : "Filter";
-    let ft = manga.filterType();
-    if (ft >= 2) {
-      if (ft == 2) {
-        text.textContent = "Filtered by tags.";
-      } else if (ft == 3) {
-        text.textContent = "Filtered by language.";
-      } else {
-        text.textContent = "Filtered by regex.";
-      }
-      header.style.backgroundColor = "rgba(255,255,25,0.5)";
-    } else if (ft == 1) {
-      text.textContent = "";
-      header.style.backgroundColor = "rgba(255,0,0,0.5)";
-    } else {
-      text.textContent = "";
-      header.style.backgroundColor = header.getAttribute("orig-color");
-    }
-  }
-  redraw();
-  GM_addValueChangeListener(manga.key, redraw);
-  GM_addValueChangeListener(Option.dbKey, redraw);
-  function toggleFilter() {
-    manga.load();
-    manga.filtered = !manga.filtered;
-    filterButton.textContent = manga.filtered ? "Unfilter" : "Filter";
-    manga.save();
-  }
-  filterButton.addEventListener("click", toggleFilter);
-  let selection;
-  let chapters = [...document.querySelectorAll(".chapter-row .col-lg-5 a")];
-  function select(chapter) {
-    selection = chapter;
-    selection.focus({preventScroll:true});
-  }
-  function changePage(offset) {
-    let pageButtons = document.querySelectorAll(".page-item");
-    for (let i = 0; i < pageButtons.length; ++i) {
-      if (pageButtons[i].classList.contains("active")) {
-        pageButtons[i+offset].querySelector("a").click();
-        return;
-      }
-    }
-  }
-  addEventListener("keydown", function(e){
-    if (!selection && e.key != "f") return;
-    // Blocks keypresses if active element is searchbar etc
-    if (document.activeElement.tagName === "INPUT") return;
-    let i = chapters.indexOf(selection);
-    if (e.key == "ArrowDown" || e.key == "s") {
-      select(chapters[(i+1)%chapters.length]);
-      selection.scrollIntoView({behavior:"smooth",block:"center",inline:"center"});
-    } else if (e.key == "ArrowUp" || e.key == "w") {
-      select(chapters[(i-1+chapters.length)%chapters.length]);
-      selection.scrollIntoView({behavior:"smooth",block:"center",inline:"center"});
-    } else if (e.key == "ArrowLeft" || e.key == "a") {
-      changePage(-1);
-    } else if (e.key == "ArrowRight" || e.key == "d") {
-      changePage(1);
-    } else if (e.key == "f") {
-      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-      toggleFilter();
-      filterButton.scrollIntoView({behavior:"smooth",block:"center"});
-    } else if (e.key == "Home") {
-      if (selection == chapters[0] && document.scrollingElement.scrollTop != 0) return;
-      select(chapters[0]);
-      selection.scrollIntoView({behavior:"smooth",block:"center",inline:"center"});
-    } else if (e.key == "End") {
-      select(chapters[chapters.length-1]);
-      selection.scrollIntoView({behavior:"smooth",block:"center",inline:"center"});
-    } else if (e.key == "M") {
-      location.pathname = "/";
-    } else if (e.key == "c") {
-      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-      let title = document.querySelector("h6 .mx-1");
-      navigator.clipboard.writeText(title.textContent).then(()=>{
-        return "#0f0";
-      }, ()=>{
-        return "#f00";
-      }).then(color=>{
-        requestAnimationFrame(()=>{
-          title.style.color = color;
-          title.style.transition = "color 0s ease";
-          requestAnimationFrame(()=>{
-            title.style.color = "";
-            title.style.transitionDuration = "1s";
-          })
-        })
-      });
-    } else {
-      return;
-    }
-    e.preventDefault();
-    e.stopPropagation();
-  });
-  if (chapters.length) select(chapters[0]);
-}
-
-async function main_frontpage() {
-  document.querySelector(".navbar").appendChild((new Dashboard).createToggleButton("MDFilter"));
-  // Add chapter class for all chapter links so they get :visited color
-  for (let a of document.querySelectorAll("a")) {
-    if (a.href.match(/\/chapter\/\d+/)) {
-      a.classList.add("chapter");
-    }
-  }
-  // Color top manga in sidebar
-  {
-    for (let li of document.querySelectorAll(".list-group-item")) {
-      let title = li.querySelector("a.manga_title");
-      if (!title) continue;
-      let mid = Number(title.href.match(/\d+/));
-      let manga = new Manga(mid);
-      let color = () => {
-        manga.load();
-        let ft = manga.filterType();
-        if (ft >= 2) {
-          li.style.backgroundColor = "#ff03";
-        } else if (ft == 1) {
-          li.style.backgroundColor = "#f003";
-        } else {
-          li.style.backgroundColor = "";
-        }
-      }
-      color();
-      GM_addValueChangeListener(manga.key, color);
-      GM_addValueChangeListener(Option.dbKey, color);
-    }
-  }
-  let container = document.querySelector(".m-0");
-  container.innerHTML = "";
-  let mangalist = new FrontPageMangaList(container);
-  addEventListener("keydown", e => mangalist.onKeyDownEvent(e));
-  let lastVisit = Math.min(Date.now() - 2 * 24 * 60 * 60 * 1000, GM_getValue("LAST_VISIT", 0));
-  GM_setValue("LAST_VISIT", Date.now());
-  document.querySelector(".row.m-0").addEventListener("focusin", e => mangalist.onFocusEvent(e));
-  // Initial and periodic fetches of update pages
-  {
-    await mangalist.controlDiv.fetchUntilTime(lastVisit);
-    setInterval(() => {
-      if (Date.now() - mangalist.controlDiv.lastRefresh > 5 * 60 * 1000) {
-        mangalist.controlDiv.fetchFirstPages();
-      }
-    }, 60 * 1000);
-  }
-}
-
-function main_chapter() {
-  // Check for "Error while loading a resource. The server may be busy at the moment."
-  {
-    let errorObserver = new MutationObserver(function(){
-      if (reader.model._chapter) return; // Chapter already loaded successfully
-      let messageEl = document.querySelector(".message");
-      if (messageEl && messageEl.textContent == "Error while loading a resource. The server may be busy at the moment.") {
-        errorObserver.disconnect(); // Prevents infinite loop
-        let refreshAt = Date.now() + 60 * 1000;
-        let timerEl = document.createElement("div");
-        timerEl.className = "message";
-        messageEl.parentNode.appendChild(timerEl);
-        function update() {
-          let remaining = refreshAt - Date.now();
-          timerEl.textContent = `Refreshing in ${Math.round(remaining/1000)} seconds.`;
-          if (remaining > 0) {
-            setTimeout(update, 500);
-          } else {
-            location.reload();
-          }
-        }
-        update();
-      }
-    });
-    errorObserver.observe(document.querySelector(".reader-images"), {childList:true, subtree:true});
-  }
-  // Periodically checks pages that failed to load and retries one every 10 secs
-  setInterval(function(){
-    // Mostly copied from MD reader source at 2021-03-08 to reduce risk of update bugs
-    let notch = document.querySelector(".failed");
-    if (!notch) return;
-    let page = parseInt(notch.dataset.page);
-    if (!page) {
-      console.log("Could not find page for error notch.", notch);
-      return;
-    }
-    reader.model.getPageWithoutLoading(page).reload(!0);
-  }, 10000)
-  // Makes the default reader to add /chapter/id to history in addition to /chapter/id/1, so that chapters gray out properly
-  {
-    let pushState = history.pushState;
-    unsafeWindow.history.pushState = function(data, title, url) {
-      if (data.page == 1) {
-        pushState.apply(history, [data, title, "/chapter/" + data.chapter]);
-      }
-      pushState.apply(history, [data, title, url]);
-    }
-    document.body.addEventListener("keydown", function(e){
-      // Blocks keypresses if active element is searchbar etc
-      if (document.activeElement.tagName === "INPUT") return;
-      if (e.key == "Home") {
-        document.querySelector(".notch").click();
-      } else if (e.key == "End") {
-        document.querySelector(".notch:last-child").click();
-      }
-    });
-  }
-}
-
-function main_updates() {
-  // Add chapter class for all chapter links so they get :visited color
-  for (let a of document.querySelectorAll("a")) {
-    if (a.href.match(/\/chapter\/\d+/)) {
-      a.classList.add("chapter");
-    }
-  }
-  // Color rows
-  {
-    let rows = document.querySelectorAll("tr");
-    for (let i = 0; i < rows.length; ++i) {
-      let span = rows[i].children[0].rowSpan;
-      if (span > 1) {
-        let mid = Number(rows[i].querySelector(".manga_title").href.match(/\d+/));
-        let manga = new Manga(mid);
-        let color = () => {
-          manga.load();
-          let ft = manga.filterType();
-          if (ft >= 2) {
-            for (let j = i; j < i+span; ++j) {
-              rows[j].style.backgroundColor = "#ff02";
+    const mainMap = new Map([
+        [/^\/$/, main$3],
+        //[/^\/titles\/latest\/$/, mainLatest],
+        [/^\/title\/[a-f0-9-]+$/, main$2]
+    ]);
+    function main() {
+        main$1();
+        for (let [k, f] of mainMap.entries()) {
+            if (k.test(location.pathname)) {
+                f();
             }
-          } else if (ft == 1) {
-            for (let j = i; j < i+span; ++j) {
-              rows[j].style.backgroundColor = "#f002";
-            }
-          } else {
-            for (let j = i; j < i+span; ++j) {
-              rows[j].style.backgroundColor = "";
-            }
-          }
         }
-        color();
-        GM_addValueChangeListener(manga.key, color);
-        GM_addValueChangeListener(Option.dbKey, color);
-        i += span - 1;
-      }
     }
-  }
-  // Add keyboard controls
-  let mangaLinks = [...document.querySelectorAll("a.manga_title")];
-  let selection;
-  let page = Number(location.pathname.match(/\d+/)) || 1;
-  function select(el) {
-    selection = el;
-    selection.focus({preventScroll:true});
-    selection.scrollIntoView({behavior: "smooth", block: "center", inline: "center"});
-  }
-  addEventListener("keydown", function(e){
-    if (!selection) return;
-    // Blocks keypresses if active element is searchbar etc
-    if (document.activeElement.tagName === "INPUT") return;
-    let i = mangaLinks.indexOf(selection);
-    if (e.key == "ArrowRight") {
-      if (document.activeElement == selection) location.pathname = "/updates/" + (page+1);
-    } else if (e.key == "ArrowLeft") {
-      if (document.activeElement == selection && page > 1) location.pathname = "/updates/" + (page-1);
-    } else if (e.key == "ArrowDown") {
-      select(mangaLinks[(i+1)%mangaLinks.length]);
-    } else if (e.key == "ArrowUp") {
-      select(mangaLinks[(i-1+mangaLinks.length)%mangaLinks.length]);
-    } else {
-      return;
-    }
-    e.stopPropagation();
-    e.preventDefault();
-  });
-  select(mangaLinks[0]);
-}
+    main();
 
-
-function addCSS() {
-  let style = document.createElement("style");
-  style.type = "text/css";
-  style.innerHTML = `
-    a.button {
-      user-select: none;
-    }
-    a.button:hover {
-      cursor: pointer;
-      text-decoration: underline !important;
-      filter: brightness(150%);
-    }
-    .chapter:visited {
-      color: gray;
-    }
-    /*button:focus {
-      background-color: #8f8;
-    }*/
-    @keyframes flashRedColor {
-      from {
-        color: #f00;
-      }
-      to {
-        color: inherit;
-      }
-    }
-    @keyframes flashGreenColor {
-      from {
-        color: #0f0;
-      }
-      to {
-        color: inherit;
-      }
-    }
-  `;
-  if (window.location.pathname === "/") {
-    style.innerHTML += `
-      .col-lg-8 .chapter:link {
-        color: #5f5;
-      }
-    `;
-  }
-  document.head.appendChild(style);
-}
-
-function checkResponseErrors() {
-  function addRefreshTimer() {
-    let refreshAt = Date.now() + 60 * 1000;
-    let timerEl = document.createElement("div");
-    timerEl.style.textAlign = "center";
-    document.body.appendChild(timerEl);
-    function update() {
-      let remaining = refreshAt - Date.now();
-      timerEl.textContent = `Refreshing in ${Math.round(remaining/1000)} seconds.`;
-      if (remaining > 0) {
-        setTimeout(update, 200);
-      } else {
-        location.reload();
-      }
-    }
-    update();
-  }
-  let h1 = document.querySelector("h1");
-  let bEl = document.querySelector("b");
-  if (h1 && ["502 Bad Gateway","504 Gateway Time-out"].includes(h1.textContent) ||
-     bEl && ["502 - Bad Gateway .","504 - Gateway Timeout ."].includes(bEl.textContent)) {
-    addRefreshTimer();
-    return true;
-  }
-  return false;
-}
-
-async function updateDatabase(oldDbVersion) {
-  const newDbVersion = 21;
-  oldDbVersion = oldDbVersion || GM_getValue("VERSION");
-  if (oldDbVersion != newDbVersion) {
-    console.log(`Updating from dbVersion ${oldDbVersion} to ${newDbVersion}.`);
-    let origBody = document.body;
-    let html = origBody.parentNode;
-    let tempBody = document.createElement("body");
-    html.removeChild(origBody);
-    html.appendChild(tempBody);
-    function createText(s) {
-      let div = document.createElement("div");
-      div.textContent = s;
-      tempBody.appendChild(div);
-      div.scrollIntoView();
-    }
-    createText(`Updating from dbVersion ${oldDbVersion} to ${newDbVersion}.`);
-    // Update FILTERED_LANGS
-    if (oldDbVersion < 21) {
-      createText("Updating language filters...");
-      let allLangs = new Set();
-      for (let k of GM_listValues()) {
-        let mid = Number(k);
-        if (!isFinite(mid)) continue;
-        let m = new Manga(mid);
-        m.load();
-        if (m.language) allLangs.add(m.language);
-      }
-      let filteredLangs = new Option("FILTERED_LANGS");
-      let langMap = {
-        "Chinese (Trad)": "cn",
-        "Chinese (Simp)": "cn",
-        "Korean": "kr"
-      }
-      let newFilters = new Set();
-      for (let lang of filteredLangs.value) {
-        if (allLangs.has(lang)) {
-          newFilters.add(lang);
-        } else if (langMap[lang]) {
-          newFilters.add(langMap[lang]);
-        }
-      }
-      filteredLangs.value = newFilters;
-      filteredLangs.save();
-    }
-    GM_setValue("VERSION", newDbVersion);
-    createText("Update successful. Returning to Mangadex...");
-    await sleep(3000);
-    html.removeChild(tempBody);
-    html.appendChild(origBody);
-  }
-  GM_addValueChangeListener("VERSION", close); // Closes current tab if another tab updates db to avoid corruption
-}
-
-async function main() {
-  await updateDatabase();
-  if (checkResponseErrors()) return;
-  if (window.location.pathname === "/" && location.search == "") {
-    main_frontpage();
-  } else if (window.location.pathname.match("^/(?:manga|title)/")) {
-    main_manga();
-  } else if (window.location.pathname.match("^/updates")) {
-    main_updates();
-  } else if (location.pathname.match("^/chapter/")) {
-    main_chapter();
-  }
-  addCSS();
-}
-main();
-
-// Namespace for exposed functions
-MangadexFilter = {
-  cache_get: function(filter) {
-    var v = GM_listValues().filter(k=>k.match(filter));
-    return v;
-  },
-  cache_clear: function(filter){
-    var v = MangadexFilter.cache_get(filter);
-    if (confirm("Specific entries shown in log.\nClear cache?")) {
-      v.forEach(GM_deleteValue);
-    }
-  },
-  cache_update: function(filter) {
-    let v = MangadexFilter.cache_get(filter);
-    for (let i = 0, j = v.length; i < j; ++i) {
-      xhr_get(v[i], ()=>{}, false, 500);
-    }
-  },
-  debug: {
-    GM_getValue: GM_getValue,
-    GM_setValue: GM_setValue,
-    GM_listValues: GM_listValues,
-    GM_deleteValue: GM_deleteValue,
-    updateDatabase: updateDatabase
-  },
-  dashboard_cache_remove: function(elem,mid){
-    let tr = elem.parentNode.parentNode;
-    GM_deleteValue(mid);
-    tr.parentNode.removeChild(tr);
-  }
-};
-
-class Dashboard {
-  createToggleButton(buttonText) {
-    let button = document.createElement("button");
-    button.textContent = buttonText;
-    button.addEventListener("click", () => this.toggle());
-    return button;
-  }
-  init() {
-    // Create body
-    {
-      function addElement(type, parent) {
-        return parent.appendChild(document.createElement(type));
-      }
-      this.body = document.createElement("body");
-      this.body.id = "mdfbody";
-      this.body.style.backgroundColor = "#fff";
-      this.body.style.padding = 0;
-      // Create header bar
-      {
-        this.header = addElement("div", this.body);
-        this.header.style.borderBottom = "2px solid black";
-        this.header.style.height = "30px";
-        // Create tag tab button
-        {
-          let button = addElement("button", this.header);
-          button.textContent = "Tags";
-          button.onclick = () => this.showTagTab();
-        }
-        // Create language tab button
-        {
-          let button = addElement("button", this.header);
-          button.textContent = "Languages";
-          button.onclick = () => this.showLanguageTab();
-        }
-        this.header.appendChild(this.createToggleButton("Close"));
-      }
-      this.content = addElement("div", this.body);
-      this.content.style.display = "block";
-      this.content.style.top = "30px";
-      this.content.style.padding = "5px";
-    }
-    // Add CSS to head
-    {
-      let style = document.createElement("style");
-      style.type = "text/css";
-      style.innerHTML = `
-        #mdfbody {
-          padding: 0;
-          color: #000;
-        }
-        #mdfbody, #mdfbody table {
-          background-color: #fff;
-        }
-        .mdf-tag-table td {
-          width: 75px;
-          height: 20px;
-          border: 1px solid black;
-        }
-        .mdf-tag-table td.mdf-tag-name {
-          width: 200px;
-          border-left: none;
-        }
-        .mdf-tag-table td.mdf-tag-id {
-          width: 25px;
-          color: #aaa;
-          border-right: none;
-        }
-        .mdf-tag-table button {
-          width: 100%;
-        }
-        .mdf-tag-table input {
-          border: none;
-          width: 75px;
-          height: 20px;
-          background-color: #0000;
-        }
-        .mdf-tag-table .red {
-          background-color: #f005;
-        }
-        .mdf-tag-table .green {
-          background-color: #0f05;
-        }
-        .mdf-lang-table td, .mdf-lang-table th {
-          text-align: center;
-          padding: 0 5px 0 5px;
-          border: 1px solid black;
-        }
-        .mdf-lang-table td.mdf-flag-td {
-          width: 30px;
-          text-align: center;
-          background-color: #ccc;
-        }
-      `;
-      document.head.appendChild(style);
-    }
-  }
-  toggle() {
-    if (!this.body) this.init();
-    [document.body, this.body] = [this.body, document.body];
-  }
-  async showTagTab() {
-    this.content.innerHTML = "Loading tags...";
-    let tagList = await this.getTagList();
-    this.content.innerHTML = "";
-    let tagFilters = new Option("FILTERING_TAG_WEIGHTS");
-    function addElement(type, parent) {
-      return parent.appendChild(document.createElement(type));
-    }
-    let table = addElement("table", this.content);
-    table.className = "mdf-tag-table";
-    let tr = addElement("tr", table);
-    // Create add rule button
-    {
-      let td = addElement("td", tr);
-      td.colSpan = "2";
-      let addRuleButton = addElement("button", td);
-      addRuleButton.onclick = () => {
-        tagFilters.value.push({});
-        tagFilters.save();
-        this.showTagTab();
-      }
-      addRuleButton.textContent = "Add rule";
-    }
-    // Create remove rule buttons
-    for (let i = 0; i < tagFilters.value.length; ++i) {
-      let removeRuleButton = addElement("button", addElement("td", tr));
-      removeRuleButton.textContent = "Remove";
-      removeRuleButton.onclick = () => {
-        tagFilters.value.splice(i,1);
-        tagFilters.save();
-        this.showTagTab();
-      }
-    }
-    for (let tag of tagList) {
-      tr = addElement("tr", table);
-      let tagId = addElement("td", tr);
-      tagId.textContent = tag.id;
-      tagId.className = "mdf-tag-id";
-      let tagName = addElement("td", tr);
-      tagName.textContent = tag.name;
-      tagName.className = "mdf-tag-name";
-      for (let rule of tagFilters.value) {
-        let td = addElement("td", tr);
-        let input = addElement("input", td);
-        input.type = "text";
-        input.value = rule[tag.id] || "";
-        function restyle() {
-          td.className = "";
-          if (rule[tag.id] < 0) td.className = "red";
-          else if (rule[tag.id] > 0) td.className = "green";
-        }
-        restyle();
-        input.onchange = function() {
-          if (!input.value) {
-            delete rule[tag.id];
-          } else {
-            rule[tag.id] = Number(input.value);
-          }
-          tagFilters.save();
-          restyle();
-        }
-      }
-    }
-  }
-  showLanguageTab() {
-    // Find all languages in database
-    let allLangs = new Set();
-    for (let k of GM_listValues()) {
-      let mid = Number(k);
-      if (!isFinite(mid)) continue;
-      let m = new Manga(mid);
-      m.load();
-      if (m.language) allLangs.add(m.language);
-    }
-    // Create DOM
-    this.content.innerHTML = "";
-    function addElement(type, parent) {
-      return parent.appendChild(document.createElement(type));
-    }
-    let table = addElement("table", this.content);
-    table.className = "mdf-lang-table";
-    let tr = addElement("tr", table);
-    addElement("th", tr).textContent = "Language";
-    addElement("th", tr).textContent = "Flag";
-    addElement("th", tr).textContent = "Filtered";
-    let filteredLangs = new Option("FILTERED_LANGS");
-    for (let lang of allLangs) {
-      tr = addElement("tr", table);
-      addElement("td", tr).textContent = lang;
-      let td = addElement("td", tr);
-      td.className = "mdf-flag-td";
-      addElement("span", td).className = "rounded flag flag-" + lang;
-      let checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.checked = filteredLangs.value.has(lang);
-      checkbox.onchange = () => {
-        if (checkbox.checked) {
-          filteredLangs.value.add(lang);
-        } else {
-          filteredLangs.value.delete(lang);
-        }
-        filteredLangs.save();
-      };
-      addElement("td", tr).appendChild(checkbox);
-    }
-  }
-  async getTagList() {
-    if (this.taglist) return this.taglist;
-    this.taglist = [
-      {id: -99, name: "Hentai"},
-      {id: -4, name: "Josei"},
-      {id: -3, name: "Seinen"},
-      {id: -2, name: "Shoujo"},
-      {id: -1, name: "Shounen"}
-    ];
-    let response = await fetch_throttled("https://api.mangadex.org/v2/tag");
-    let json = await response.json();
-    let tags = json.data;
-    for (let key in tags) {
-      this.taglist.push(tags[key]);
-    }
-    return this.taglist;
-  }
-}
-
+}());

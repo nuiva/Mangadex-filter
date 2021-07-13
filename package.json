@@ -1,0 +1,23 @@
+{
+  "name": "mangadex-filter",
+  "version": "1.0.0",
+  "description": "",
+  "main": "Mangadex-filter.user.js",
+  "scripts": {
+    "build": "npx tsc && npx rollup -c .\\rollup.config.js && type .\\src\\header.js .\\build\\bundle.js > .\\Mangadex-filter.user.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nuiva/Mangadex-filter.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/nuiva/Mangadex-filter/issues"
+  },
+  "homepage": "https://github.com/nuiva/Mangadex-filter#readme",
+  "devDependencies": {
+    "typescript": "^4.3.5",
+    "rollup": "^2.53.1"
+  }
+}
