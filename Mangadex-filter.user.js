@@ -774,6 +774,45 @@
         return style;
     }
 
+    class TimeText extends HTMLTimeElement {
+        constructor(timestamp) {
+            super();
+            this.timestamp = timestamp;
+            this.timeoutID = null;
+            this.onTimeout = () => {
+                let diff = this.timestamp - Date.now();
+                let sign = Math.sign(diff);
+                diff = Math.abs(diff);
+                let i = 0;
+                while (i < TimeText.thresholds.length && TimeText.thresholds[i][0] < diff)
+                    ++i;
+                i = Math.max(0, i - 1);
+                let multiplier = Math.floor(diff / TimeText.thresholds[i][0]);
+                this.textContent = multiplier + TimeText.thresholds[i][1] + (sign == -1 ? " ago" : "");
+                let untilNext = (multiplier + 1) * TimeText.thresholds[i][0] - diff;
+                this.timeoutID = setTimeout(this.onTimeout, untilNext);
+            };
+            this.classList.add("time-text");
+            this.title = new Date(timestamp).toISOString();
+        }
+        connectedCallback() {
+            this.onTimeout();
+        }
+        disconnectedCallback() {
+            clearTimeout(this.timeoutID);
+        }
+        static initialize() {
+            customElements.define("time-text", TimeText, { extends: "time" });
+        }
+    }
+    TimeText.thresholds = [
+        [1, "ms"],
+        [1000, "s"],
+        [1000 * 60, "min"],
+        [1000 * 60 * 60, "h"],
+        [1000 * 60 * 60 * 24, "d"]
+    ];
+
     class MangaRow extends HTMLTableRowElement {
         constructor(manga) {
             super();
@@ -814,8 +853,10 @@
             let chapterLink = document.createElement("a");
             chapterLink.href = `/chapter/${chapter.id}`;
             chapterLink.textContent = `v${chapter.attributes.volume ?? "_"}c${chapter.attributes.chapter ?? "_"} - ${chapter.attributes.title ?? "NO TITLE"}`;
-            this.chapterContainer.appendChild(document.createElement("div")).appendChild(chapterLink);
-            this.timestamp = Math.max(this.timestamp, new Date(chapter.attributes.publishAt).getTime());
+            let publishTime = new Date(chapter.attributes.publishAt).getTime();
+            this.chapterContainer.appendChild(document.createElement("div"))
+                .append(new TimeText(publishTime), chapterLink);
+            this.timestamp = Math.max(this.timestamp, publishTime);
         }
         addTd(...content) {
             let td = document.createElement("td");
@@ -831,6 +872,7 @@
         }
         static initialize() {
             FilterButton.initialize();
+            TimeText.initialize();
             customElements.define("manga-row", MangaRow, { extends: "tr" });
         }
     }
@@ -1087,6 +1129,9 @@
             .chapter-table td:first-child {
                 padding: 0;
                 height: 100px; /* Minimum height for cover images */
+            }
+            .time-text {
+                margin-right: 5px;
             }
         `);
         }

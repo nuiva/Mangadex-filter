@@ -3,6 +3,7 @@ import { FilterButton } from "./filterButton"
 import { ImageTooltip } from "./imgTooltip"
 import { Manga } from "./manga"
 import { addStyle, getStyleContainer } from "./style"
+import { TimeText } from "./timeText"
 
 class MangaRow extends HTMLTableRowElement {
     cover: HTMLImageElement
@@ -35,8 +36,10 @@ class MangaRow extends HTMLTableRowElement {
         let chapterLink = document.createElement("a");
         chapterLink.href = `/chapter/${chapter.id}`;
         chapterLink.textContent = `v${chapter.attributes.volume ?? "_"}c${chapter.attributes.chapter ?? "_"} - ${chapter.attributes.title ?? "NO TITLE"}`
-        this.chapterContainer.appendChild(document.createElement("div")).appendChild(chapterLink);
-        this.timestamp = Math.max(this.timestamp, new Date(chapter.attributes.publishAt).getTime());
+        let publishTime = new Date(chapter.attributes.publishAt).getTime();
+        this.chapterContainer.appendChild(document.createElement("div"))
+            .append(new TimeText(publishTime), chapterLink);
+        this.timestamp = Math.max(this.timestamp, publishTime);
     }
     onFilterUpdate = () => {
         if (this.manga.filterStatus.get()) {
@@ -59,6 +62,7 @@ class MangaRow extends HTMLTableRowElement {
     }
     static initialize() {
         FilterButton.initialize();
+        TimeText.initialize();
         customElements.define("manga-row", MangaRow, {extends: "tr"});
     }
 }

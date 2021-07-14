@@ -55,6 +55,9 @@ export class Dashboard extends HTMLBodyElement {
                 padding: 0;
                 height: 100px; /* Minimum height for cover images */
             }
+            .time-text {
+                margin-right: 5px;
+            }
         `);
     }
     createHeader() {
