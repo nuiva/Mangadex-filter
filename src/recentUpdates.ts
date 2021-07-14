@@ -4,33 +4,39 @@ import { ImageTooltip } from "./imgTooltip"
 import { Manga } from "./manga"
 import { addStyle, getStyleContainer } from "./style"
 
-class ChapterRow extends HTMLTableRowElement {
+class MangaRow extends HTMLTableRowElement {
     cover: HTMLImageElement
-    chapterTitle: HTMLAnchorElement
-    mangaTitle: HTMLAnchorElement
-    filterButton: FilterButton
     coverFetched = false
-    constructor(
-        public chapter: GenericObject<ChapterAttributes>,
-        public manga: Manga)
-    {
+    chapterContainer: HTMLTableCellElement
+    chapters = new Set<string>()
+    timestamp = 0 // Used for ordering rows, currently gets max publishTime from chapters
+    constructor(public manga: Manga) {
         super();
-        this.classList.add("chapter-row");
+        // Create cover
         this.cover = document.createElement("img");
         this.cover.classList.add("hover-tooltip");
         if (manga.cover.get()) this.setCover(manga.cover.get());
-        this.chapterTitle = document.createElement("a");
-        this.chapterTitle.href = `/chapter/${chapter.id}`;
-        this.chapterTitle.textContent = `v${chapter.attributes.volume ?? "?"}c${chapter.attributes.chapter ?? "?"} - ${chapter.attributes.title ?? "NO TITLE"}`;
-        this.mangaTitle = document.createElement("a");
-        this.mangaTitle.href = `/title/${manga.id}`;
-        this.mangaTitle.textContent = manga.title.get();
-        this.filterButton = new FilterButton(manga.filtered);
         this.addTd(this.cover);
-        this.addTd(this.chapterTitle);
-        this.addTd(this.mangaTitle, this.filterButton);
-        this.manga.filterStatus.addChangeListener(this.onFilterUpdate);
+        // Create chapter container
+        this.chapterContainer = this.addTd();
+        // Create title
+        {
+            let title = document.createElement("a");
+            title.textContent = manga.title.get();
+            title.href = `/title/${manga.id}`;
+            this.addTd(title, new FilterButton(manga.filtered));
+        }
+        manga.filterStatus.addChangeListener(this.onFilterUpdate);
         this.onFilterUpdate();
+    }
+    addChapter(chapter: GenericObject<ChapterAttributes>) {
+        if (this.chapters.has(chapter.id)) return;
+        this.chapters.add(chapter.id);
+        let chapterLink = document.createElement("a");
+        chapterLink.href = `/chapter/${chapter.id}`;
+        chapterLink.textContent = `v${chapter.attributes.volume ?? "_"}c${chapter.attributes.chapter ?? "_"} - ${chapter.attributes.title ?? "NO TITLE"}`
+        this.chapterContainer.appendChild(document.createElement("div")).appendChild(chapterLink);
+        this.timestamp = Math.max(this.timestamp, new Date(chapter.attributes.publishAt).getTime());
     }
     onFilterUpdate = () => {
         if (this.manga.filterStatus.get()) {
@@ -44,7 +50,7 @@ class ChapterRow extends HTMLTableRowElement {
         for (let element of content) {
             td.appendChild(element);
         }
-        this.appendChild(td);
+        return this.appendChild(td);
     }
     setCover(filename: string) {
         this.cover.src = `https://uploads.mangadex.org/covers/${this.manga.id}/${filename}.256.jpg`;
@@ -53,25 +59,30 @@ class ChapterRow extends HTMLTableRowElement {
     }
     static initialize() {
         FilterButton.initialize();
-        customElements.define("chapter-row", ChapterRow, {extends: "tr"});
+        customElements.define("manga-row", MangaRow, {extends: "tr"});
     }
 }
 
 export class ChapterTable extends HTMLTableElement {
-    mangaCache = new Map<string,Manga>();
+    mangaCache = new Map<string,MangaRow>();
     offset: number = 0
     chapters = new Set<string>();
+    rows: HTMLCollectionOf<MangaRow>
+    constructor() {
+        super();
+        this.classList.add("chapter-table");
+    }
     addChapter(chapter: GenericObject<ChapterAttributes>, manga: GenericObject<MangaAttributes>) {
         if (this.chapters.has(chapter.id)) return;
         this.chapters.add(chapter.id);
         if (!this.mangaCache.has(manga.id)) {
             let manga_ = new Manga(manga.id);
-            this.mangaCache.set(manga.id, manga_);
             manga_.updateFrom(manga);
+            let mangaRow = new MangaRow(manga_);
+            this.mangaCache.set(manga.id, mangaRow);
+            this.appendChild(mangaRow);
         }
-        let row = new ChapterRow(chapter, this.mangaCache.get(manga.id));
-        this.appendChild(row);
-        this.classList.add("chapter-table");
+        this.mangaCache.get(manga.id).addChapter(chapter);
     }
     async fetchMore() {
         let oldOffset = this.offset;
@@ -84,19 +95,19 @@ export class ChapterTable extends HTMLTableElement {
     }
     async fetchCovers() {
         let mangasToFetchSet = new Set<string>();
-        for (let chapterRow of this.childNodes as NodeListOf<ChapterRow>) {
-            if (chapterRow.coverFetched == true) continue;
-            mangasToFetchSet.add(chapterRow.manga.id);
+        for (let mangaRow of this.rows) {
+            if (mangaRow.coverFetched == true) continue;
+            mangasToFetchSet.add(mangaRow.manga.id);
         }
         let coverMap = await fetchCovers(...mangasToFetchSet);
-        for (let chapterRow of this.childNodes as NodeListOf<ChapterRow>) {
-            if (coverMap.has(chapterRow.manga.id)) {
-                chapterRow.setCover(coverMap.get(chapterRow.manga.id));
+        for (let mangaRow of this.rows) {
+            if (coverMap.has(mangaRow.manga.id)) {
+                mangaRow.setCover(coverMap.get(mangaRow.manga.id));
             }
         }
     }
     static initialize() {
-        ChapterRow.initialize();
+        MangaRow.initialize();
         customElements.define("chapter-table", ChapterTable, {extends: "table"});
     }
 }

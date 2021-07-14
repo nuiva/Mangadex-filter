@@ -36,15 +36,24 @@ export class Dashboard extends HTMLBodyElement {
             }
             .chapter-table {
                 border-collapse: collapse;
+                height: 1px;
+            }
+            .chapter-table tr {
+                height: 100%;
             }
             .chapter-table td {
                 border: 1px solid black;
                 padding: 0 5px 0 5px;
+                height: 100%;
             }
-            .chapter-row img {
-                height: 100px;
+            .chapter-table img {
+                height: 100%;
                 width: 100px;
                 object-fit: contain;
+            }
+            .chapter-table td:first-child {
+                padding: 0;
+                height: 100px; /* Minimum height for cover images */
             }
         `);
     }

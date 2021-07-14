@@ -1,7 +1,7 @@
   // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 23
+// @version 24
 // @match *://mangadex.org/*
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -774,12 +774,13 @@
         return style;
     }
 
-    class ChapterRow extends HTMLTableRowElement {
-        constructor(chapter, manga) {
+    class MangaRow extends HTMLTableRowElement {
+        constructor(manga) {
             super();
-            this.chapter = chapter;
             this.manga = manga;
             this.coverFetched = false;
+            this.chapters = new Set();
+            this.timestamp = 0; // Used for ordering rows, currently gets max publishTime from chapters
             this.onFilterUpdate = () => {
                 if (this.manga.filterStatus.get()) {
                     this.classList.add("filtered-manga");
@@ -788,30 +789,40 @@
                     this.classList.remove("filtered-manga");
                 }
             };
-            this.classList.add("chapter-row");
+            // Create cover
             this.cover = document.createElement("img");
             this.cover.classList.add("hover-tooltip");
             if (manga.cover.get())
                 this.setCover(manga.cover.get());
-            this.chapterTitle = document.createElement("a");
-            this.chapterTitle.href = `/chapter/${chapter.id}`;
-            this.chapterTitle.textContent = `v${chapter.attributes.volume ?? "?"}c${chapter.attributes.chapter ?? "?"} - ${chapter.attributes.title ?? "NO TITLE"}`;
-            this.mangaTitle = document.createElement("a");
-            this.mangaTitle.href = `/title/${manga.id}`;
-            this.mangaTitle.textContent = manga.title.get();
-            this.filterButton = new FilterButton(manga.filtered);
             this.addTd(this.cover);
-            this.addTd(this.chapterTitle);
-            this.addTd(this.mangaTitle, this.filterButton);
-            this.manga.filterStatus.addChangeListener(this.onFilterUpdate);
+            // Create chapter container
+            this.chapterContainer = this.addTd();
+            // Create title
+            {
+                let title = document.createElement("a");
+                title.textContent = manga.title.get();
+                title.href = `/title/${manga.id}`;
+                this.addTd(title, new FilterButton(manga.filtered));
+            }
+            manga.filterStatus.addChangeListener(this.onFilterUpdate);
             this.onFilterUpdate();
+        }
+        addChapter(chapter) {
+            if (this.chapters.has(chapter.id))
+                return;
+            this.chapters.add(chapter.id);
+            let chapterLink = document.createElement("a");
+            chapterLink.href = `/chapter/${chapter.id}`;
+            chapterLink.textContent = `v${chapter.attributes.volume ?? "_"}c${chapter.attributes.chapter ?? "_"} - ${chapter.attributes.title ?? "NO TITLE"}`;
+            this.chapterContainer.appendChild(document.createElement("div")).appendChild(chapterLink);
+            this.timestamp = Math.max(this.timestamp, new Date(chapter.attributes.publishAt).getTime());
         }
         addTd(...content) {
             let td = document.createElement("td");
             for (let element of content) {
                 td.appendChild(element);
             }
-            this.appendChild(td);
+            return this.appendChild(td);
         }
         setCover(filename) {
             this.cover.src = `https://uploads.mangadex.org/covers/${this.manga.id}/${filename}.256.jpg`;
@@ -820,15 +831,16 @@
         }
         static initialize() {
             FilterButton.initialize();
-            customElements.define("chapter-row", ChapterRow, { extends: "tr" });
+            customElements.define("manga-row", MangaRow, { extends: "tr" });
         }
     }
     class ChapterTable extends HTMLTableElement {
         constructor() {
-            super(...arguments);
+            super();
             this.mangaCache = new Map();
             this.offset = 0;
             this.chapters = new Set();
+            this.classList.add("chapter-table");
         }
         addChapter(chapter, manga) {
             if (this.chapters.has(chapter.id))
@@ -836,12 +848,12 @@
             this.chapters.add(chapter.id);
             if (!this.mangaCache.has(manga.id)) {
                 let manga_ = new Manga(manga.id);
-                this.mangaCache.set(manga.id, manga_);
                 manga_.updateFrom(manga);
+                let mangaRow = new MangaRow(manga_);
+                this.mangaCache.set(manga.id, mangaRow);
+                this.appendChild(mangaRow);
             }
-            let row = new ChapterRow(chapter, this.mangaCache.get(manga.id));
-            this.appendChild(row);
-            this.classList.add("chapter-table");
+            this.mangaCache.get(manga.id).addChapter(chapter);
         }
         async fetchMore() {
             let oldOffset = this.offset;
@@ -854,20 +866,20 @@
         }
         async fetchCovers() {
             let mangasToFetchSet = new Set();
-            for (let chapterRow of this.childNodes) {
-                if (chapterRow.coverFetched == true)
+            for (let mangaRow of this.rows) {
+                if (mangaRow.coverFetched == true)
                     continue;
-                mangasToFetchSet.add(chapterRow.manga.id);
+                mangasToFetchSet.add(mangaRow.manga.id);
             }
             let coverMap = await fetchCovers(...mangasToFetchSet);
-            for (let chapterRow of this.childNodes) {
-                if (coverMap.has(chapterRow.manga.id)) {
-                    chapterRow.setCover(coverMap.get(chapterRow.manga.id));
+            for (let mangaRow of this.rows) {
+                if (coverMap.has(mangaRow.manga.id)) {
+                    mangaRow.setCover(coverMap.get(mangaRow.manga.id));
                 }
             }
         }
         static initialize() {
-            ChapterRow.initialize();
+            MangaRow.initialize();
             customElements.define("chapter-table", ChapterTable, { extends: "table" });
         }
     }
@@ -1057,15 +1069,24 @@
             }
             .chapter-table {
                 border-collapse: collapse;
+                height: 1px;
+            }
+            .chapter-table tr {
+                height: 100%;
             }
             .chapter-table td {
                 border: 1px solid black;
                 padding: 0 5px 0 5px;
+                height: 100%;
             }
-            .chapter-row img {
-                height: 100px;
+            .chapter-table img {
+                height: 100%;
                 width: 100px;
                 object-fit: contain;
+            }
+            .chapter-table td:first-child {
+                padding: 0;
+                height: 100px; /* Minimum height for cover images */
             }
         `);
         }

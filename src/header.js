@@ -1,7 +1,7 @@
   // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 23
+// @version 24
 // @match *://mangadex.org/*
 // @grant        GM_getValue
 // @grant        GM_setValue
