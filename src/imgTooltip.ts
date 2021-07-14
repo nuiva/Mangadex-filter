@@ -26,6 +26,7 @@ export class ImageTooltip extends HTMLImageElement {
         this.hidden = true;
     }
     onLoad = () => {
+        if (this.currentTarget === null) return; // Image loaded after mouseout
         this.hidden = false;
         let coords = this.currentTarget.getBoundingClientRect();
         this.style.top = Math.min(coords.top, window.innerHeight - this.height) + "px";
