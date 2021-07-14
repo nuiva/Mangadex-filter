@@ -51,6 +51,9 @@ export class Dashboard extends HTMLBodyElement {
                 width: 100px;
                 object-fit: contain;
             }
+            .chapter-table .filter-button {
+                display: block; /* Makes filter buttons appear on separate line */
+            }
             .chapter-table td:first-child {
                 padding: 0;
                 height: 100px; /* Minimum height for cover images */
