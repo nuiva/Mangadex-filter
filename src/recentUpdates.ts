@@ -78,7 +78,7 @@ export class ChapterTable extends HTMLTableElement {
         for (let {chapter, manga} of chapters) {
             this.addChapter(chapter, manga);
         }
-        this.fetchCovers();
+        await this.fetchCovers();
     }
     async fetchCovers() {
         let mangasToFetchSet = new Set<string>();
