@@ -98,11 +98,4 @@ export class Dashboard extends HTMLBodyElement {
         this.initialized = true;
         customElements.define("mdf-dashboard", Dashboard, {extends: "body"});
     }
-    static getShowButton() {
-        let btn = document.createElement("button");
-        btn.classList.add("mdf-dashboard-btn");
-        btn.addEventListener("click", this.show);
-        btn.textContent = "Show MDF Dashboard";
-        return btn;
-    }
 }
