@@ -1,5 +1,6 @@
 import { ChapterAttributes, fetchCovers, fetchRecentChapters, GenericObject, MangaAttributes } from "./api"
 import { FilterButton } from "./filterButton"
+import { ImageTooltip } from "./imgTooltip"
 import { Manga } from "./manga"
 import { addStyle, getStyleContainer } from "./style"
 
@@ -16,6 +17,7 @@ class ChapterRow extends HTMLTableRowElement {
         super();
         this.classList.add("chapter-row");
         this.cover = document.createElement("img");
+        this.cover.classList.add("hover-tooltip");
         if (manga.cover.get()) this.setCover(manga.cover.get());
         this.chapterTitle = document.createElement("a");
         this.chapterTitle.href = `/chapter/${chapter.id}`;
@@ -125,6 +127,7 @@ export class ChapterTableContainer extends HTMLDivElement {
                 display: none;
             }
         `);
+        this.appendChild(new ImageTooltip("hover-tooltip"));
     }
     toggleShowFiltered() {
         if (this.filterStyle.isConnected) {
@@ -138,5 +141,6 @@ export class ChapterTableContainer extends HTMLDivElement {
     static initialize() {
         ChapterTable.initialize();
         customElements.define("chapter-table-container", ChapterTableContainer, {extends: "div"});
+        ImageTooltip.initialize();
     }
 }

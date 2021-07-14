@@ -601,6 +601,47 @@
     }
     LanguageFilterButton.typeName = "language-filter-button";
 
+    class ImageTooltip extends HTMLImageElement {
+        constructor(targetClass) {
+            super();
+            this.targetClass = targetClass;
+            this.currentTarget = null;
+            this.onMouseover = (e) => {
+                if (!(e.target instanceof HTMLImageElement) || !e.target.classList.contains(this.targetClass))
+                    return;
+                this.currentTarget = e.target;
+                this.src = e.target.src;
+            };
+            this.onMouseout = (e) => {
+                if (e.target !== this.currentTarget)
+                    return;
+                this.currentTarget = null;
+                this.hidden = true;
+            };
+            this.onLoad = () => {
+                this.hidden = false;
+                let coords = this.currentTarget.getBoundingClientRect();
+                this.style.top = Math.min(coords.top, window.innerHeight - this.height) + "px";
+                this.style.left = coords.right + 5 + "px";
+            };
+            this.style.position = "fixed";
+            this.style.zIndex = "999999";
+            this.addEventListener("load", this.onLoad);
+        }
+        connectedCallback() {
+            this.parentNode.addEventListener("mouseover", this.onMouseover);
+            this.parentNode.addEventListener("mouseout", this.onMouseout);
+            this.hidden = true;
+        }
+        disconnectedCallback() {
+            this.parentNode.removeEventListener("mouseover", this.onMouseover);
+            this.parentNode.removeEventListener("mouseout", this.onMouseout);
+        }
+        static initialize() {
+            customElements.define("image-tooltip", ImageTooltip, { extends: "img" });
+        }
+    }
+
     class TagFilteredBool extends BoolWrapper {
         constructor(tags) {
             super(new Variable(false));
@@ -747,6 +788,7 @@
             };
             this.classList.add("chapter-row");
             this.cover = document.createElement("img");
+            this.cover.classList.add("hover-tooltip");
             if (manga.cover.get())
                 this.setCover(manga.cover.get());
             this.chapterTitle = document.createElement("a");
@@ -806,7 +848,7 @@
             for (let { chapter, manga } of chapters) {
                 this.addChapter(chapter, manga);
             }
-            this.fetchCovers();
+            await this.fetchCovers();
         }
         async fetchCovers() {
             let mangasToFetchSet = new Set();
@@ -849,6 +891,7 @@
                 display: none;
             }
         `);
+            this.appendChild(new ImageTooltip("hover-tooltip"));
         }
         toggleShowFiltered() {
             if (this.filterStyle.isConnected) {
@@ -863,6 +906,7 @@
         static initialize() {
             ChapterTable.initialize();
             customElements.define("chapter-table-container", ChapterTableContainer, { extends: "div" });
+            ImageTooltip.initialize();
         }
     }
 
@@ -1071,13 +1115,6 @@
             }
             this.initialized = true;
             customElements.define("mdf-dashboard", Dashboard, { extends: "body" });
-        }
-        static getShowButton() {
-            let btn = document.createElement("button");
-            btn.classList.add("mdf-dashboard-btn");
-            btn.addEventListener("click", this.show);
-            btn.textContent = "Show MDF Dashboard";
-            return btn;
         }
     }
     Dashboard.initialized = false;
