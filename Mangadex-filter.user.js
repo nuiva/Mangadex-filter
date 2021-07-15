@@ -982,16 +982,28 @@
         constructor(option) {
             super();
             this.option = option;
+            this.onOptionChanged = () => {
+                let v = this.option.get();
+                this.value = v ?? "";
+                if (v < 0) {
+                    this.style.backgroundColor = "#f88";
+                }
+                else if (v > 0) {
+                    this.style.backgroundColor = "#8f8";
+                }
+            };
             this.onValueChanged = () => {
                 this.option.set(this.value || undefined);
             };
         }
         connectedCallback() {
-            this.value = this.option.get() ?? "";
             this.addEventListener("change", this.onValueChanged);
+            this.option.addChangeListener(this.onOptionChanged);
+            this.onOptionChanged();
         }
         disconnectedCallback() {
             this.removeEventListener("change", this.onValueChanged);
+            this.option.removeChangeListener(this.onOptionChanged);
         }
     }
     customElements.define("tag-weight-input", TagWeightInput, { extends: "input" });
@@ -1263,6 +1275,16 @@
         // Filter indicator
         FilterIndicator.initialize();
         menu.appendChild(new FilterIndicator(manga.filterStatus, new Map([[2, "Filtered by tags"]])));
+        // Copy title from keyboard
+        addEventListener("keydown", (e) => {
+            if (e.key != "c" || document.activeElement !== document.body)
+                return;
+            navigator.clipboard.writeText(manga.title.get()).then(() => "#0f0", () => "#f00").then(async (c) => {
+                menu.style.backgroundColor = c;
+                await new Promise(f => setTimeout(f, 200));
+                menu.style.backgroundColor = "";
+            });
+        });
     }
 
     async function updateOldMangaIds(logger) {

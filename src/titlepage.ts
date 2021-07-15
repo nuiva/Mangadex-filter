@@ -29,4 +29,16 @@ export default function main() {
     // Filter indicator
     FilterIndicator.initialize();
     menu.appendChild(new FilterIndicator(manga.filterStatus, new Map([[2, "Filtered by tags"]])));
+    // Copy title from keyboard
+    addEventListener("keydown", (e: KeyboardEvent) => {
+        if (e.key != "c" || document.activeElement !== document.body) return;
+        navigator.clipboard.writeText(manga.title.get()).then(
+            () => "#0f0",
+            () => "#f00"
+        ).then(async c=>{
+            menu.style.backgroundColor = c;
+            await new Promise(f => setTimeout(f, 200));
+            menu.style.backgroundColor = "";
+        });
+    });
 }

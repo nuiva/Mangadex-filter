@@ -20,11 +20,22 @@ class TagWeightInput extends HTMLInputElement {
         super();
     }
     connectedCallback() {
-        this.value = this.option.get() ?? "";
         this.addEventListener("change", this.onValueChanged);
+        this.option.addChangeListener(this.onOptionChanged);
+        this.onOptionChanged();
     }
     disconnectedCallback() {
         this.removeEventListener("change", this.onValueChanged);
+        this.option.removeChangeListener(this.onOptionChanged);
+    }
+    onOptionChanged = () => {
+        let v = this.option.get();
+        this.value = v ?? "";
+        if (v < 0) {
+            this.style.backgroundColor = "#f88";
+        } else if (v > 0) {
+            this.style.backgroundColor = "#8f8";
+        }
     }
     onValueChanged = () => {
         this.option.set(this.value || undefined);
