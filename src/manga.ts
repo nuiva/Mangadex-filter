@@ -72,7 +72,7 @@ class FilterStatus extends Variable {
     }
 }
 
-export class FilterIndicator extends HTMLParagraphElement {
+export class FilterIndicator extends HTMLDivElement {
     static filterTexts = new Map<number, string>([
         [0, "Not filtered"],
         [1, "Filtered"],
@@ -81,6 +81,7 @@ export class FilterIndicator extends HTMLParagraphElement {
     ]);
     constructor(public filterStatus: FilterStatus, public filterTexts: Map<number, string> = FilterIndicator.filterTexts) {
         super();
+        this.classList.add("filter-indicator");
         this.filterStatus.addChangeListener(this.update);
         this.update();
     }
@@ -88,7 +89,7 @@ export class FilterIndicator extends HTMLParagraphElement {
         this.textContent = this.filterTexts.get(this.filterStatus.get()) ?? "";
     }
     static initialize() {
-        customElements.define("filter-indicator", FilterIndicator, {extends: "p"});
+        customElements.define("filter-indicator", FilterIndicator, {extends: "div"});
     }
 }
 

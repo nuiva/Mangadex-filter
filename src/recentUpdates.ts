@@ -1,7 +1,7 @@
 import { ChapterAttributes, fetchCovers, fetchRecentChapters, GenericObject, MangaAttributes } from "./api"
 import { FilterButton } from "./filterButton"
 import { ImageTooltip } from "./imgTooltip"
-import { Manga } from "./manga"
+import { FilterIndicator, Manga } from "./manga"
 import { addStyle, getStyleContainer } from "./style"
 import { TimeText } from "./timeText"
 
@@ -34,15 +34,15 @@ class MangaRow extends HTMLTableRowElement {
         this.cover.classList.add("hover-tooltip");
         if (manga.cover.get()) this.setCover(manga.cover.get());
         this.addTd(this.cover);
-        // Create chapter container
-        this.chapterContainer = this.addTd();
         // Create title
         {
             let title = document.createElement("a");
             title.textContent = manga.title.get();
             title.href = `/title/${manga.id}`;
-            this.addTd(title, new FilterButton(manga.filtered));
+            this.addTd(title, new FilterButton(manga.filtered), new FilterIndicator(manga.filterStatus));
         }
+        // Create chapter container
+        this.chapterContainer = this.addTd();
         manga.filterStatus.addChangeListener(this.onFilterUpdate);
         this.onFilterUpdate();
     }
@@ -206,5 +206,6 @@ export class ChapterTableContainer extends HTMLDivElement {
         ChapterTable.initialize();
         customElements.define("chapter-table-container", ChapterTableContainer, {extends: "div"});
         ImageTooltip.initialize();
+        FilterIndicator.initialize();
     }
 }

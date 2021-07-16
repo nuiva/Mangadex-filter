@@ -58,6 +58,12 @@ export class Dashboard extends HTMLBodyElement {
                 padding: 0;
                 height: 100px; /* Minimum height for cover images */
             }
+            .filter-indicator {
+                display: none;
+            }
+            .filtered-manga .filter-indicator {
+                display: initial;
+            }
             .time-text {
                 margin-right: 5px;
             }

@@ -703,7 +703,7 @@
             super.destroy();
         }
     }
-    class FilterIndicator extends HTMLParagraphElement {
+    class FilterIndicator extends HTMLDivElement {
         constructor(filterStatus, filterTexts = FilterIndicator.filterTexts) {
             super();
             this.filterStatus = filterStatus;
@@ -711,11 +711,12 @@
             this.update = () => {
                 this.textContent = this.filterTexts.get(this.filterStatus.get()) ?? "";
             };
+            this.classList.add("filter-indicator");
             this.filterStatus.addChangeListener(this.update);
             this.update();
         }
         static initialize() {
-            customElements.define("filter-indicator", FilterIndicator, { extends: "p" });
+            customElements.define("filter-indicator", FilterIndicator, { extends: "div" });
         }
     }
     FilterIndicator.filterTexts = new Map([
@@ -855,15 +856,15 @@
             if (manga.cover.get())
                 this.setCover(manga.cover.get());
             this.addTd(this.cover);
-            // Create chapter container
-            this.chapterContainer = this.addTd();
             // Create title
             {
                 let title = document.createElement("a");
                 title.textContent = manga.title.get();
                 title.href = `/title/${manga.id}`;
-                this.addTd(title, new FilterButton(manga.filtered));
+                this.addTd(title, new FilterButton(manga.filtered), new FilterIndicator(manga.filterStatus));
             }
+            // Create chapter container
+            this.chapterContainer = this.addTd();
             manga.filterStatus.addChangeListener(this.onFilterUpdate);
             this.onFilterUpdate();
         }
@@ -1011,6 +1012,7 @@
             ChapterTable.initialize();
             customElements.define("chapter-table-container", ChapterTableContainer, { extends: "div" });
             ImageTooltip.initialize();
+            FilterIndicator.initialize();
         }
     }
 
@@ -1198,6 +1200,12 @@
             .chapter-table td:first-child {
                 padding: 0;
                 height: 100px; /* Minimum height for cover images */
+            }
+            .filter-indicator {
+                display: none;
+            }
+            .filtered-manga .filter-indicator {
+                display: initial;
             }
             .time-text {
                 margin-right: 5px;
