@@ -103,8 +103,8 @@ export class ChapterTable extends HTMLTableElement {
         }
         let mangaRow = this.mangaCache.get(manga.id);
         mangaRow.addChapter(chapter);
-        if (mangaRow.timestamp < (mangaRow.previousSibling as MangaRow)?.timestamp ||
-            mangaRow.timestamp > (mangaRow.nextSibling as MangaRow)?.timestamp) {
+        if (mangaRow.timestamp > (mangaRow.previousSibling as MangaRow)?.timestamp ||
+            mangaRow.timestamp < (mangaRow.nextSibling as MangaRow)?.timestamp) {
             let i = 0;
             while (i < this.rows.length && (this.rows[i].timestamp > mangaRow.timestamp || this.rows[i] === mangaRow)) ++i;
             this.insertBefore(mangaRow, this.rows[i] ?? null);

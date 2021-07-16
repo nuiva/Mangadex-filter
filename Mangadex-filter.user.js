@@ -919,8 +919,8 @@
             }
             let mangaRow = this.mangaCache.get(manga.id);
             mangaRow.addChapter(chapter);
-            if (mangaRow.timestamp < mangaRow.previousSibling?.timestamp ||
-                mangaRow.timestamp > mangaRow.nextSibling?.timestamp) {
+            if (mangaRow.timestamp > mangaRow.previousSibling?.timestamp ||
+                mangaRow.timestamp < mangaRow.nextSibling?.timestamp) {
                 let i = 0;
                 while (i < this.rows.length && (this.rows[i].timestamp > mangaRow.timestamp || this.rows[i] === mangaRow))
                     ++i;
