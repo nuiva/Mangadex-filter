@@ -645,15 +645,17 @@
     }
 
     class TagFilteredBool extends BoolWrapper {
-        constructor(tags) {
+        constructor(tags, demographic) {
             super(new Variable(false));
             this.tags = tags;
+            this.demographic = demographic;
             this.onWeightChanged = () => {
                 for (let rule of FILTERING_TAG_WEIGHTS) {
                     let w = 0;
                     for (let tag of this.tags) {
                         w += Number(rule[tag] ?? 0);
                     }
+                    w += Number(rule[this.demographic.get()] ?? 0);
                     if (w <= -1) {
                         return super.set(true);
                     }
@@ -662,16 +664,18 @@
             };
             FILTERING_TAG_WEIGHTS.addChangeListener(this.onWeightChanged);
             this.tags.addChangeListener(this.onWeightChanged);
+            this.demographic.addChangeListener(this.onWeightChanged);
             this.onWeightChanged();
         }
         destroy() {
             FILTERING_TAG_WEIGHTS.removeChangeListener(this.onWeightChanged);
             this.tags.removeChangeListener(this.onWeightChanged);
+            this.demographic.removeChangeListener(this.onWeightChanged);
             super.destroy();
         }
     }
     class FilterStatus extends Variable {
-        constructor(filtered, tags, language) {
+        constructor(filtered, tags, language, demographic) {
             super(0);
             this.onVariableChange = () => {
                 if (this.filtered.get()) {
@@ -686,7 +690,7 @@
                 this.set(0);
             };
             this.filtered = filtered;
-            this.tagFiltered = new TagFilteredBool(tags);
+            this.tagFiltered = new TagFilteredBool(tags, demographic);
             this.filtered.addChangeListener(this.onVariableChange);
             this.tagFiltered.addChangeListener(this.onVariableChange);
             this.langFiltered = new SetIndicator(FILTERED_LANGS, language);
@@ -731,7 +735,7 @@
             this.demographic = new ObjectField(this.variable, "e");
             this.language = new ObjectField(this.variable, "l");
             //this.hentai = new BoolWrapper(new ObjectField(this.variable, "h"));
-            this.filterStatus = new FilterStatus(this.filtered, this.tags, this.language);
+            this.filterStatus = new FilterStatus(this.filtered, this.tags, this.language, this.demographic);
             this.cover = new ObjectField(this.variable, "c");
         }
         updateFrom(json) {
@@ -991,18 +995,24 @@
                 else if (v > 0) {
                     this.style.backgroundColor = "#8f8";
                 }
+                else if (Number.isNaN(v)) {
+                    this.style.backgroundColor = "#ff8";
+                }
+                else {
+                    this.style.backgroundColor = "";
+                }
             };
             this.onValueChanged = () => {
                 this.option.set(this.value || undefined);
             };
         }
         connectedCallback() {
-            this.addEventListener("change", this.onValueChanged);
+            this.addEventListener("input", this.onValueChanged);
             this.option.addChangeListener(this.onOptionChanged);
             this.onOptionChanged();
         }
         disconnectedCallback() {
-            this.removeEventListener("change", this.onValueChanged);
+            this.removeEventListener("input", this.onValueChanged);
             this.option.removeChangeListener(this.onOptionChanged);
         }
     }
@@ -1035,7 +1045,7 @@
         }
         async delayed_construct() {
             this.createRow("Tag name");
-            let tags = await getTags();
+            let tags = [...await getTags(), "shounen", "shoujo", "josei", "seinen"];
             tags.sort();
             for (let i = 0; i < FILTERING_TAG_WEIGHTS.length; ++i) {
                 let opt = new ArrayField(FILTERING_TAG_WEIGHTS, i);

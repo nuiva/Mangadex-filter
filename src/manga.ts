@@ -3,10 +3,14 @@ import { GenericObject, MangaAttributes } from "./api";
 import { FILTERED_LANGS, FILTERING_TAG_WEIGHTS } from "./options";
 
 class TagFilteredBool extends BoolWrapper {
-    constructor(public tags: JsonSetWrapper) {
+    constructor(
+        public tags: JsonSetWrapper,
+        public demographic: ObjectField
+    ) {
         super(new Variable(false));
         FILTERING_TAG_WEIGHTS.addChangeListener(this.onWeightChanged);
         this.tags.addChangeListener(this.onWeightChanged);
+        this.demographic.addChangeListener(this.onWeightChanged);
         this.onWeightChanged();
     }
     onWeightChanged = () => {
@@ -15,6 +19,7 @@ class TagFilteredBool extends BoolWrapper {
             for (let tag of this.tags) {
                 w += Number(rule[tag] ?? 0);
             }
+            w += Number(rule[this.demographic.get()] ?? 0);
             if (w <= -1) {
                 return super.set(true);
             }
@@ -24,6 +29,7 @@ class TagFilteredBool extends BoolWrapper {
     destroy() {
         FILTERING_TAG_WEIGHTS.removeChangeListener(this.onWeightChanged);
         this.tags.removeChangeListener(this.onWeightChanged);
+        this.demographic.removeChangeListener(this.onWeightChanged);
         super.destroy();
     }
 }
@@ -35,11 +41,12 @@ class FilterStatus extends Variable {
     constructor(
         filtered: BoolWrapper,
         tags: JsonSetWrapper,
-        language: ObjectField
+        language: ObjectField,
+        demographic: ObjectField
     ) {
         super(0);
         this.filtered = filtered;
-        this.tagFiltered = new TagFilteredBool(tags);
+        this.tagFiltered = new TagFilteredBool(tags, demographic);
         this.filtered.addChangeListener(this.onVariableChange);
         this.tagFiltered.addChangeListener(this.onVariableChange);
         this.langFiltered = new SetIndicator(FILTERED_LANGS, language);
@@ -106,7 +113,7 @@ export class Manga {
       this.demographic = new ObjectField(this.variable, "e");
       this.language = new ObjectField(this.variable, "l");
       //this.hentai = new BoolWrapper(new ObjectField(this.variable, "h"));
-      this.filterStatus = new FilterStatus(this.filtered, this.tags, this.language);
+      this.filterStatus = new FilterStatus(this.filtered, this.tags, this.language, this.demographic);
       this.cover = new ObjectField(this.variable, "c");
     }
     updateFrom(json: GenericObject<MangaAttributes>) {

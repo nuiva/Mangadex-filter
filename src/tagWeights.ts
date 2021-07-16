@@ -20,12 +20,12 @@ class TagWeightInput extends HTMLInputElement {
         super();
     }
     connectedCallback() {
-        this.addEventListener("change", this.onValueChanged);
+        this.addEventListener("input", this.onValueChanged);
         this.option.addChangeListener(this.onOptionChanged);
         this.onOptionChanged();
     }
     disconnectedCallback() {
-        this.removeEventListener("change", this.onValueChanged);
+        this.removeEventListener("input", this.onValueChanged);
         this.option.removeChangeListener(this.onOptionChanged);
     }
     onOptionChanged = () => {
@@ -35,6 +35,10 @@ class TagWeightInput extends HTMLInputElement {
             this.style.backgroundColor = "#f88";
         } else if (v > 0) {
             this.style.backgroundColor = "#8f8";
+        } else if (Number.isNaN(v)) {
+            this.style.backgroundColor = "#ff8";
+        } else {
+            this.style.backgroundColor = "";
         }
     }
     onValueChanged = () => {
@@ -73,7 +77,7 @@ export class TagWeightTable extends HTMLTableElement {
     }
     async delayed_construct() {
         this.createRow("Tag name");
-        let tags = await getTags();
+        let tags = [...await getTags(), "shounen", "shoujo", "josei", "seinen"];
         tags.sort();
         for (let i = 0; i < FILTERING_TAG_WEIGHTS.length; ++i) {
             let opt = new ArrayField(FILTERING_TAG_WEIGHTS, i);
@@ -119,12 +123,12 @@ export class TagWeightTable extends HTMLTableElement {
         this.appendChild(tr);
     }
     destroy() {
+        this.innerHTML = ""; // Must be called before col.option.destroy because it calls cell.disconnectedCallback -> option.removeChangeListener
         for (let col of this.columns) {
             col.destroy();
             col.option.destroy();
         }
         this.columns = [];
-        this.innerHTML = "";
     }
 }
 customElements.define("tag-weight-table", TagWeightTable, {extends: "table"});
