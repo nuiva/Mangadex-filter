@@ -27,7 +27,9 @@ export class TimeText extends HTMLTimeElement {
         i = Math.max(0, i-1);
         let multiplier = Math.floor(diff / TimeText.thresholds[i][0]);
         this.textContent = multiplier + TimeText.thresholds[i][1] + (sign == -1 ? " ago" : "");
-        let untilNext = (multiplier + 1) * TimeText.thresholds[i][0] - diff;
+        let untilNext = sign === 1 ?
+            diff - multiplier * TimeText.thresholds[i][0] + 1 :
+            (multiplier + 1) * TimeText.thresholds[i][0] - diff;
         this.timeoutID = setTimeout(this.onTimeout, untilNext);
     }
     static initialize() {

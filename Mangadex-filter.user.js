@@ -793,7 +793,9 @@
                 i = Math.max(0, i - 1);
                 let multiplier = Math.floor(diff / TimeText.thresholds[i][0]);
                 this.textContent = multiplier + TimeText.thresholds[i][1] + (sign == -1 ? " ago" : "");
-                let untilNext = (multiplier + 1) * TimeText.thresholds[i][0] - diff;
+                let untilNext = sign === 1 ?
+                    diff - multiplier * TimeText.thresholds[i][0] + 1 :
+                    (multiplier + 1) * TimeText.thresholds[i][0] - diff;
                 this.timeoutID = setTimeout(this.onTimeout, untilNext);
             };
             this.classList.add("time-text");
@@ -817,6 +819,21 @@
         [1000 * 60 * 60 * 24, "d"]
     ];
 
+    class ChapterRow extends HTMLDivElement {
+        constructor(chapter) {
+            super();
+            this.chapter = chapter;
+            let chapterLink = document.createElement("a");
+            chapterLink.href = `/chapter/${chapter.id}`;
+            chapterLink.textContent = `v${chapter.attributes.volume ?? "_"}c${chapter.attributes.chapter ?? "_"} - ${chapter.attributes.title ?? "NO TITLE"}`;
+            this.timestamp = new Date(chapter.attributes.publishAt).getTime();
+            this.append(new TimeText(this.timestamp), chapterLink);
+        }
+        static initialize() {
+            customElements.define("chapter-row", ChapterRow, { extends: "div" });
+            TimeText.initialize();
+        }
+    }
     class MangaRow extends HTMLTableRowElement {
         constructor(manga) {
             super();
@@ -854,13 +871,13 @@
             if (this.chapters.has(chapter.id))
                 return;
             this.chapters.add(chapter.id);
-            let chapterLink = document.createElement("a");
-            chapterLink.href = `/chapter/${chapter.id}`;
-            chapterLink.textContent = `v${chapter.attributes.volume ?? "_"}c${chapter.attributes.chapter ?? "_"} - ${chapter.attributes.title ?? "NO TITLE"}`;
-            let publishTime = new Date(chapter.attributes.publishAt).getTime();
-            this.chapterContainer.appendChild(document.createElement("div"))
-                .append(new TimeText(publishTime), chapterLink);
-            this.timestamp = Math.max(this.timestamp, publishTime);
+            let newRow = new ChapterRow(chapter);
+            let i = 0;
+            let rows = this.chapterContainer.children;
+            while (i < rows.length && rows[i].timestamp > newRow.timestamp)
+                ++i;
+            this.chapterContainer.insertBefore(newRow, rows[i] ?? null);
+            this.timestamp = Math.max(this.timestamp, newRow.timestamp);
         }
         addTd(...content) {
             let td = document.createElement("td");
@@ -875,8 +892,8 @@
             this.coverFetched = true;
         }
         static initialize() {
+            ChapterRow.initialize();
             FilterButton.initialize();
-            TimeText.initialize();
             customElements.define("manga-row", MangaRow, { extends: "tr" });
         }
     }
@@ -890,7 +907,7 @@
         }
         addChapter(chapter, manga) {
             if (this.chapters.has(chapter.id))
-                return;
+                return false;
             this.chapters.add(chapter.id);
             if (!this.mangaCache.has(manga.id)) {
                 let manga_ = new Manga(manga.id);
@@ -899,7 +916,29 @@
                 this.mangaCache.set(manga.id, mangaRow);
                 this.appendChild(mangaRow);
             }
-            this.mangaCache.get(manga.id).addChapter(chapter);
+            let mangaRow = this.mangaCache.get(manga.id);
+            mangaRow.addChapter(chapter);
+            if (mangaRow.timestamp < mangaRow.previousSibling?.timestamp ||
+                mangaRow.timestamp > mangaRow.nextSibling?.timestamp) {
+                let i = 0;
+                while (i < this.rows.length && (this.rows[i].timestamp > mangaRow.timestamp || this.rows[i] === mangaRow))
+                    ++i;
+                this.insertBefore(mangaRow, this.rows[i] ?? null);
+            }
+            return true;
+        }
+        async fetchNew() {
+            let chapters = [];
+            for (let offset = 0, oldChapterFound = false; oldChapterFound === false; offset += 100) {
+                for (let entry of await fetchRecentChapters(offset)) {
+                    oldChapterFound ||= this.mangaCache.get(entry.manga.id)?.chapters?.has?.(entry.chapter.id);
+                    chapters.push(entry);
+                }
+            }
+            for (let { chapter, manga } of chapters) {
+                this.addChapter(chapter, manga);
+            }
+            await this.fetchCovers();
         }
         async fetchMore() {
             let oldOffset = this.offset;
@@ -934,24 +973,29 @@
             super();
             this.table = new ChapterTable();
             this.table.fetchMore();
-            this.addMoreButton = document.createElement("button");
-            this.addMoreButton.textContent = "Fetch more";
-            this.addMoreButton.addEventListener("click", () => this.table.fetchMore());
+            // Fetch new
+            let addNewButton = document.createElement("button");
+            addNewButton.textContent = "Fetch new";
+            addNewButton.addEventListener("click", () => {
+                addNewButton.disabled = true;
+                this.table.fetchNew().then(() => { addNewButton.disabled = false; }, () => { addNewButton.style.backgroundColor = "#f00"; });
+            });
+            // Fetch older
+            let addMoreButton = document.createElement("button");
+            addMoreButton.textContent = "Fetch older";
+            addMoreButton.addEventListener("click", () => this.table.fetchMore());
             this.showFilteredButton = document.createElement("button");
             this.showFilteredButton.textContent = "Show filtered";
             this.showFilteredButton.addEventListener("click", () => this.toggleShowFiltered());
             this.showFilteredButton.style.position = "absolute";
             this.showFilteredButton.style.top = "0";
             this.showFilteredButton.style.right = "0";
-            this.appendChild(this.table);
-            this.appendChild(this.addMoreButton);
-            this.appendChild(this.showFilteredButton);
             this.filterStyle = addStyle(this, `
             .filtered-manga {
                 display: none;
             }
         `);
-            this.appendChild(new ImageTooltip("hover-tooltip"));
+            this.append(addNewButton, this.table, addMoreButton, this.showFilteredButton, new ImageTooltip("hover-tooltip"));
         }
         toggleShowFiltered() {
             if (this.filterStyle.isConnected) {
@@ -1091,12 +1135,12 @@
             this.appendChild(tr);
         }
         destroy() {
+            this.innerHTML = ""; // Must be called before col.option.destroy because it calls cell.disconnectedCallback -> option.removeChangeListener
             for (let col of this.columns) {
                 col.destroy();
                 col.option.destroy();
             }
             this.columns = [];
-            this.innerHTML = "";
         }
     }
     customElements.define("tag-weight-table", TagWeightTable, { extends: "table" });
