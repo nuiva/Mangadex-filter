@@ -988,15 +988,12 @@
             this.showFilteredButton = document.createElement("button");
             this.showFilteredButton.textContent = "Show filtered";
             this.showFilteredButton.addEventListener("click", () => this.toggleShowFiltered());
-            this.showFilteredButton.style.position = "absolute";
-            this.showFilteredButton.style.top = "0";
-            this.showFilteredButton.style.right = "0";
             this.filterStyle = addStyle(this, `
             .filtered-manga {
                 display: none;
             }
         `);
-            this.append(addNewButton, this.table, addMoreButton, this.showFilteredButton, new ImageTooltip("hover-tooltip"));
+            this.append(addNewButton, this.showFilteredButton, this.table, addMoreButton, new ImageTooltip("hover-tooltip"));
         }
         toggleShowFiltered() {
             if (this.filterStyle.isConnected) {
