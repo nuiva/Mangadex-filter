@@ -1339,9 +1339,10 @@
             if (e.key != "c" || document.activeElement !== document.body)
                 return;
             navigator.clipboard.writeText(manga.title.get()).then(() => "#0f0", () => "#f00").then(async (c) => {
-                menu.style.backgroundColor = c;
+                let el = document.querySelector(".mt-4") ?? document.body;
+                el.style.backgroundColor = c;
                 await new Promise(f => setTimeout(f, 200));
-                menu.style.backgroundColor = "";
+                el.style.backgroundColor = "";
             });
         });
     }

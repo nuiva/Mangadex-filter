@@ -36,9 +36,10 @@ export default function main() {
             () => "#0f0",
             () => "#f00"
         ).then(async c=>{
-            menu.style.backgroundColor = c;
+            let el = document.querySelector(".mt-4") as HTMLDivElement ?? document.body;
+            el.style.backgroundColor = c;
             await new Promise(f => setTimeout(f, 200));
-            menu.style.backgroundColor = "";
+            el.style.backgroundColor = "";
         });
     });
 }
