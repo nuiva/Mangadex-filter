@@ -17,5 +17,5 @@ async function main() {
     }
 }
 
-main();
+setTimeout(main, 2000);
 

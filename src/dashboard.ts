@@ -19,20 +19,8 @@ export class Dashboard extends HTMLBodyElement {
         this.shadow.appendChild(this.content);
         this.showRecent();
         addStyle(this.shadow, `
-            #MDFDashboard {
-                background-color: #fff;
-            }
-            #MDFDashboard nav {
-                border-bottom: 5px solid black;
-            }
-            #MDFDashboard nav button {
-                padding: 3px;
-            }
-            #MDFDashboard table {
-                border-collapse: collapse;
-            }
-            #MDFDashboard td {
-                border: 1px solid black;
+            nav {
+                border-bottom: 3px solid black;
             }
             .chapter-table {
                 border-collapse: collapse;
@@ -66,6 +54,9 @@ export class Dashboard extends HTMLBodyElement {
             }
             .time-text {
                 margin-right: 5px;
+            }
+            .tag-weight-table input {
+                width: 50px;
             }
         `);
     }

@@ -1,7 +1,7 @@
   // ==UserScript==
 // @name Mangadex filter
 // @namespace Mangadex filter
-// @version 24
+// @version 25
 // @match *://mangadex.org/*
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -1085,6 +1085,7 @@
             super();
             this.columns = [];
             this.delayed_construct();
+            this.classList.add("tag-weight-table");
         }
         async delayed_construct() {
             this.createRow("Tag name");
@@ -1159,20 +1160,8 @@
             this.shadow.appendChild(this.content);
             this.showRecent();
             addStyle(this.shadow, `
-            #MDFDashboard {
-                background-color: #fff;
-            }
-            #MDFDashboard nav {
-                border-bottom: 5px solid black;
-            }
-            #MDFDashboard nav button {
-                padding: 3px;
-            }
-            #MDFDashboard table {
-                border-collapse: collapse;
-            }
-            #MDFDashboard td {
-                border: 1px solid black;
+            nav {
+                border-bottom: 3px solid black;
             }
             .chapter-table {
                 border-collapse: collapse;
@@ -1206,6 +1195,9 @@
             }
             .time-text {
                 margin-right: 5px;
+            }
+            .tag-weight-table input {
+                width: 50px;
             }
         `);
         }
@@ -1481,6 +1473,6 @@
             }
         }
     }
-    main();
+    setTimeout(main, 2000);
 
 }());

@@ -74,6 +74,7 @@ export class TagWeightTable extends HTMLTableElement {
     constructor() {
         super();
         this.delayed_construct();
+        this.classList.add("tag-weight-table");
     }
     async delayed_construct() {
         this.createRow("Tag name");
