@@ -156,12 +156,13 @@ export class ChapterTableContainer extends HTMLDivElement {
     table: ChapterTable
     showFilteredButton: HTMLButtonElement
     filterStyle: HTMLStyleElement
+    fetchNewHandler: number
     constructor() {
         super();
         this.table = new ChapterTable();
         this.table.fetchMore();
         // Fetch new
-        let addNewButton = document.createElement("button");
+        /*let addNewButton = document.createElement("button");
         addNewButton.textContent = "Fetch new";
         addNewButton.addEventListener("click", () => {
             addNewButton.disabled = true;
@@ -169,7 +170,7 @@ export class ChapterTableContainer extends HTMLDivElement {
                 ()=>{addNewButton.disabled=false},
                 ()=>{addNewButton.style.backgroundColor = "#f00"}
             );
-        });
+        });*/
         // Fetch older
         let addMoreButton = document.createElement("button");
         addMoreButton.textContent = "Fetch older";
@@ -183,12 +184,18 @@ export class ChapterTableContainer extends HTMLDivElement {
             }
         `);
         this.append(
-            addNewButton,
+            //addNewButton,
             this.showFilteredButton,
             this.table,
             addMoreButton,
             new ImageTooltip("hover-tooltip")
         );
+    }
+    connectedCallback() {
+        this.fetchNewHandler = setInterval(() => this.table.fetchNew(), 60 * 1000);
+    }
+    disconnectedCallback() {
+        clearInterval(this.fetchNewHandler);
     }
     toggleShowFiltered() {
         if (this.filterStyle.isConnected) {
