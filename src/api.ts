@@ -23,8 +23,8 @@ export interface MangaAttributes {
         en: string
     }
     originalLanguage: string
-    publicationDemographic: string
-    status: string // Publication status
+    publicationDemographic: "shounen" | "shoujo" | "josei" | "seinen" | "none"
+    status: "ongoing" | "completed" | "hiatus" | "cancelled"
     tags: Array<GenericObject<TagAttributes>>
     createdAt: string
     contentRating: "safe" | "suggestive" | "erotica" | "pornographic"
