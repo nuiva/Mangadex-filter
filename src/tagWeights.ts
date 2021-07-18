@@ -78,8 +78,12 @@ export class TagWeightTable extends HTMLTableElement {
     }
     async delayed_construct() {
         this.createRow("Tag name");
-        let tags = [...await getTags(), "shounen", "shoujo", "josei", "seinen"];
+        let tags = [...await getTags()];
         tags.sort();
+        tags.push(
+            "shounen", "shoujo", "josei", "seinen",
+            "rating:safe", "rating:suggestive", "rating:erotica", "rating:pornographic"
+        );
         for (let i = 0; i < FILTERING_TAG_WEIGHTS.length; ++i) {
             let opt = new ArrayField(FILTERING_TAG_WEIGHTS, i);
             this.columns.push(new TagWeightColumn(tags, opt));

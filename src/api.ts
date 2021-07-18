@@ -27,6 +27,7 @@ export interface MangaAttributes {
     status: string // Publication status
     tags: Array<GenericObject<TagAttributes>>
     createdAt: string
+    contentRating: "safe" | "suggestive" | "erotica" | "pornographic"
 }
 
 export interface ChapterAttributes {

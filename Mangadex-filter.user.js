@@ -645,10 +645,11 @@
     }
 
     class TagFilteredBool extends BoolWrapper {
-        constructor(tags, demographic) {
+        constructor(tags, demographic, rating) {
             super(new Variable(false));
             this.tags = tags;
             this.demographic = demographic;
+            this.rating = rating;
             this.onWeightChanged = () => {
                 for (let rule of FILTERING_TAG_WEIGHTS) {
                     let w = 0;
@@ -656,6 +657,7 @@
                         w += Number(rule[tag] ?? 0);
                     }
                     w += Number(rule[this.demographic.get()] ?? 0);
+                    w += Number(rule["rating:" + this.rating.get()] ?? 0);
                     if (w <= -1) {
                         return super.set(true);
                     }
@@ -665,17 +667,19 @@
             FILTERING_TAG_WEIGHTS.addChangeListener(this.onWeightChanged);
             this.tags.addChangeListener(this.onWeightChanged);
             this.demographic.addChangeListener(this.onWeightChanged);
+            this.rating.addChangeListener(this.onWeightChanged);
             this.onWeightChanged();
         }
         destroy() {
             FILTERING_TAG_WEIGHTS.removeChangeListener(this.onWeightChanged);
             this.tags.removeChangeListener(this.onWeightChanged);
             this.demographic.removeChangeListener(this.onWeightChanged);
+            this.rating.removeChangeListener(this.onWeightChanged);
             super.destroy();
         }
     }
     class FilterStatus extends Variable {
-        constructor(filtered, tags, language, demographic) {
+        constructor(filtered, tags, language, demographic, rating) {
             super(0);
             this.onVariableChange = () => {
                 if (this.filtered.get()) {
@@ -690,7 +694,7 @@
                 this.set(0);
             };
             this.filtered = filtered;
-            this.tagFiltered = new TagFilteredBool(tags, demographic);
+            this.tagFiltered = new TagFilteredBool(tags, demographic, rating);
             this.filtered.addChangeListener(this.onVariableChange);
             this.tagFiltered.addChangeListener(this.onVariableChange);
             this.langFiltered = new SetIndicator(FILTERED_LANGS, language);
@@ -736,7 +740,8 @@
             this.demographic = new ObjectField(this.variable, "e");
             this.language = new ObjectField(this.variable, "l");
             //this.hentai = new BoolWrapper(new ObjectField(this.variable, "h"));
-            this.filterStatus = new FilterStatus(this.filtered, this.tags, this.language, this.demographic);
+            this.rating = new ObjectField(this.variable, "r");
+            this.filterStatus = new FilterStatus(this.filtered, this.tags, this.language, this.demographic, this.rating);
             this.cover = new ObjectField(this.variable, "c");
         }
         updateFrom(json) {
@@ -752,8 +757,9 @@
             this.language.set(json.attributes.originalLanguage);
         }
         destroy() {
-            this.cover.destroy();
             this.filterStatus.destroy();
+            this.rating.destroy();
+            this.cover.destroy();
             this.language.destroy();
             this.demographic.destroy();
             this.lastUpdate.destroy();
@@ -1100,8 +1106,9 @@
         }
         async delayed_construct() {
             this.createRow("Tag name");
-            let tags = [...await getTags(), "shounen", "shoujo", "josei", "seinen"];
+            let tags = [...await getTags()];
             tags.sort();
+            tags.push("shounen", "shoujo", "josei", "seinen", "rating:safe", "rating:suggestive", "rating:erotica", "rating:pornographic");
             for (let i = 0; i < FILTERING_TAG_WEIGHTS.length; ++i) {
                 let opt = new ArrayField(FILTERING_TAG_WEIGHTS, i);
                 this.columns.push(new TagWeightColumn(tags, opt));
@@ -1304,6 +1311,7 @@
     }
 
     async function main$3() {
+        await new Promise(f => setTimeout(f, 2000));
         NavMenu.initialize();
         let nav = new NavMenu();
         document.body.appendChild(nav);
@@ -1484,6 +1492,6 @@
             }
         }
     }
-    setTimeout(main, 2000);
+    main();
 
 }());
