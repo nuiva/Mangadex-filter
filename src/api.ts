@@ -3,6 +3,7 @@ export interface GenericObject<AttributeType> {
     id: string
     type: string
     attributes: AttributeType
+    relationships: Array<GenericObject<any>>
 }
 
 export interface TagAttributes {
@@ -42,9 +43,9 @@ export interface ChapterAttributes {
 
 export interface ChapterList {
     results: Array<{
-        result: String
+        result: String // hopefully "ok"
+        response: String // usually "entity"
         data: GenericObject<ChapterAttributes>
-        relationships: Array<GenericObject<any>>
     }>
 };
 
@@ -56,10 +57,13 @@ export async function fetchRecentChapters(offset: number = 0):
 {
     let response = await fetch(`https://api.mangadex.org/chapter?order[publishAt]=desc&limit=100&includes[]=manga&translatedLanguage[]=en&offset=${offset}`);
     let json: ChapterList = await response.json();
-    let returnValue = [];
+    let returnValue: Array<{
+        chapter: GenericObject<ChapterAttributes>,
+        manga: GenericObject<MangaAttributes>
+    }> = [];
     for (let entry of json.results) {
         let manga;
-        for (let rel of entry.relationships) {
+        for (let rel of entry.data.relationships) {
             if (rel.type == "manga") {
                 manga = rel;
                 break;

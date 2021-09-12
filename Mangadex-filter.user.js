@@ -19,7 +19,7 @@
         let returnValue = [];
         for (let entry of json.results) {
             let manga;
-            for (let rel of entry.relationships) {
+            for (let rel of entry.data.relationships) {
                 if (rel.type == "manga") {
                     manga = rel;
                     break;
