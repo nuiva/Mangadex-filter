@@ -1318,6 +1318,15 @@
         Dashboard.show();
     }
 
+    // Returns the least index i such that list[i] > query
+    // Returns whether the active element is writable by the user (i.e. is input, textbox, etc.)
+    function isWritableElement(el) {
+        if (el instanceof HTMLInputElement) {
+            return el.type == "text";
+        }
+        return (el instanceof HTMLTextAreaElement) || el.isContentEditable;
+    }
+
     function getMangaId() {
         let m = location.pathname.match("^/title/(.*)$");
         if (!m)
@@ -1347,10 +1356,12 @@
         menu.appendChild(new FilterIndicator(manga.filterStatus, new Map([[2, "Filtered by tags"]])));
         // Copy title from keyboard
         addEventListener("keydown", (e) => {
-            if (e.key != "c" || document.activeElement !== document.body)
+            if (!(e.target instanceof HTMLElement))
+                throw TypeError("Unknown event target type.");
+            if (e.key != "c" || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || isWritableElement(e.target))
                 return;
             navigator.clipboard.writeText(manga.title.get()).then(() => "#0f0", () => "#f00").then(async (c) => {
-                let el = document.querySelector(".mt-4") ?? document.body;
+                let el = document.querySelector("div.title p") ?? document.body;
                 el.style.backgroundColor = c;
                 await new Promise(f => setTimeout(f, 200));
                 el.style.backgroundColor = "";

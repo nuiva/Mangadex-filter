@@ -1,6 +1,7 @@
 import { FilterButton, LanguageFilterButton } from "./filterButton";
 import { FilterIndicator, Manga } from "./manga";
 import { NavMenu } from "./navMenu";
+import { isWritableElement } from "./utils";
 
 function getMangaId(): string {
     let m = location.pathname.match("^/title/(.*)$");
@@ -31,12 +32,13 @@ export default function main() {
     menu.appendChild(new FilterIndicator(manga.filterStatus, new Map([[2, "Filtered by tags"]])));
     // Copy title from keyboard
     addEventListener("keydown", (e: KeyboardEvent) => {
-        if (e.key != "c" || document.activeElement !== document.body) return;
+        if (!(e.target instanceof HTMLElement)) throw TypeError("Unknown event target type.");
+        if (e.key != "c" || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || isWritableElement(e.target)) return;
         navigator.clipboard.writeText(manga.title.get()).then(
             () => "#0f0",
             () => "#f00"
         ).then(async c=>{
-            let el = document.querySelector(".mt-4") as HTMLDivElement ?? document.body;
+            let el = document.querySelector("div.title p") as HTMLElement ?? document.body;
             el.style.backgroundColor = c;
             await new Promise(f => setTimeout(f, 200));
             el.style.backgroundColor = "";

@@ -13,3 +13,11 @@ export function binarySearch<T>(list: Array<number>, query: number) {
     }
     return left;
 }
+
+// Returns whether the active element is writable by the user (i.e. is input, textbox, etc.)
+export function isWritableElement(el: HTMLElement) {
+    if (el instanceof HTMLInputElement) {
+        return el.type == "text";
+    }
+    return (el instanceof HTMLTextAreaElement) || el.isContentEditable;
+}
