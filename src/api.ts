@@ -42,11 +42,9 @@ export interface ChapterAttributes {
 }
 
 export interface ChapterList {
-    results: Array<{
-        result: String // hopefully "ok"
-        response: String // usually "entity"
-        data: GenericObject<ChapterAttributes>
-    }>
+    result: String // hopefully "ok"
+    response: String // usually "collection"
+    data: Array<GenericObject<ChapterAttributes>>
 };
 
 export async function fetchRecentChapters(offset: number = 0):
@@ -61,16 +59,16 @@ export async function fetchRecentChapters(offset: number = 0):
         chapter: GenericObject<ChapterAttributes>,
         manga: GenericObject<MangaAttributes>
     }> = [];
-    for (let entry of json.results) {
+    for (let entry of json.data) {
         let manga;
-        for (let rel of entry.data.relationships) {
+        for (let rel of entry.relationships) {
             if (rel.type == "manga") {
                 manga = rel;
                 break;
             }
         }
         returnValue.push({
-            chapter: entry.data,
+            chapter: entry,
             manga: manga
         });
     }

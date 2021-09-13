@@ -17,16 +17,16 @@
         let response = await fetch(`https://api.mangadex.org/chapter?order[publishAt]=desc&limit=100&includes[]=manga&translatedLanguage[]=en&offset=${offset}`);
         let json = await response.json();
         let returnValue = [];
-        for (let entry of json.results) {
+        for (let entry of json.data) {
             let manga;
-            for (let rel of entry.data.relationships) {
+            for (let rel of entry.relationships) {
                 if (rel.type == "manga") {
                     manga = rel;
                     break;
                 }
             }
             returnValue.push({
-                chapter: entry.data,
+                chapter: entry,
                 manga: manga
             });
         }
