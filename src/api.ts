@@ -103,9 +103,9 @@ export async function fetchCovers(...mangaIdArray: Array<string>) {
             }
             let response = await fetchThrottled(request);
             let json = await response.json();
-            for (let entry of json.results) {
+            for (let entry of json.data) {
                 console.assert(entry.relationships[0].type == "manga");
-                mangaIdToCover.set(entry.relationships[0].id, entry.data.attributes.fileName);
+                mangaIdToCover.set(entry.relationships[0].id, entry.attributes.fileName);
             }
             total = json.total;
             offset += json.limit;
