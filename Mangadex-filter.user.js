@@ -936,9 +936,11 @@
         }
         async fetchNew() {
             let chapters = [];
-            for (let offset = 0, oldChapterFound = false; oldChapterFound === false; offset += 100) {
+            for (let offset = 0, oldChaptersFound = 0; oldChaptersFound < 50; offset += 100) {
                 for (let entry of await fetchRecentChapters(offset)) {
-                    oldChapterFound ||= this.mangaCache.get(entry.manga.id)?.chapters?.has?.(entry.chapter.id);
+                    if (this.mangaCache.get(entry.manga.id)?.chapters?.has?.(entry.chapter.id)) {
+                        oldChaptersFound += 1;
+                    }
                     chapters.push(entry);
                 }
             }
