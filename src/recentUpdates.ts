@@ -130,10 +130,17 @@ export class ChapterTable extends HTMLTableElement {
         let oldOffset = this.offset;
         this.offset += 100;
         let chapters = await fetchRecentChapters(oldOffset);
+        let added = [];
         for (let {chapter, manga} of chapters) {
-            this.addChapter(chapter, manga);
+            if (this.addChapter(chapter, manga)) {
+                added.push({chapter, manga})
+            }
         }
         await this.fetchCovers();
+        return added;
+    }
+    async fetchMoreVisible() {
+        while ((await this.fetchMore()).length === 0);
     }
     async fetchCovers() {
         let mangasToFetchSet = new Set<string>();
@@ -162,7 +169,7 @@ export class ChapterTableContainer extends HTMLDivElement {
     constructor() {
         super();
         this.table = new ChapterTable();
-        this.table.fetchMore();
+        this.table.fetchMoreVisible();
         // Fetch new
         /*let addNewButton = document.createElement("button");
         addNewButton.textContent = "Fetch new";

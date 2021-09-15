@@ -14,10 +14,13 @@
     'use strict';
 
     async function fetchRecentChapters(offset = 0) {
-        let response = await fetch(`https://api.mangadex.org/chapter?order[publishAt]=desc&limit=100&includes[]=manga&translatedLanguage[]=en&offset=${offset}`);
+        let response = await fetch(`https://api.mangadex.org/chapter?order[publishAt]=desc&limit=100&includes[]=manga&translatedLanguage[]=en&includeFutureUpdates=0&offset=${offset}`);
         let json = await response.json();
         let returnValue = [];
         for (let entry of json.data) {
+            // This filters mangas published in the future, which currently is primarily 3rd party hosted stuff
+            // Check MD discord sometimes to see if they added API solutions to this...
+            //if (new Date(entry.attributes.publishAt).getTime() > Date.now()) continue;
             let manga;
             for (let rel of entry.relationships) {
                 if (rel.type == "manga") {
@@ -953,10 +956,18 @@
             let oldOffset = this.offset;
             this.offset += 100;
             let chapters = await fetchRecentChapters(oldOffset);
+            let added = [];
             for (let { chapter, manga } of chapters) {
-                this.addChapter(chapter, manga);
+                if (this.addChapter(chapter, manga)) {
+                    added.push({ chapter, manga });
+                }
             }
             await this.fetchCovers();
+            return added;
+        }
+        async fetchMoreVisible() {
+            while ((await this.fetchMore()).length === 0)
+                ;
         }
         async fetchCovers() {
             let mangasToFetchSet = new Set();
@@ -981,7 +992,7 @@
         constructor() {
             super();
             this.table = new ChapterTable();
-            this.table.fetchMore();
+            this.table.fetchMoreVisible();
             // Fetch new
             /*let addNewButton = document.createElement("button");
             addNewButton.textContent = "Fetch new";

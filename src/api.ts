@@ -53,7 +53,7 @@ export async function fetchRecentChapters(offset: number = 0):
         manga: GenericObject<MangaAttributes>
     }>>
 {
-    let response = await fetch(`https://api.mangadex.org/chapter?order[publishAt]=desc&limit=100&includes[]=manga&translatedLanguage[]=en&offset=${offset}`);
+    let response = await fetch(`https://api.mangadex.org/chapter?order[publishAt]=desc&limit=100&includes[]=manga&translatedLanguage[]=en&includeFutureUpdates=0&offset=${offset}`);
     let json: ChapterList = await response.json();
     let returnValue: Array<{
         chapter: GenericObject<ChapterAttributes>,
