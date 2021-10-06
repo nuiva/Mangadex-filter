@@ -18,9 +18,6 @@
         let json = await response.json();
         let returnValue = [];
         for (let entry of json.data) {
-            // This filters mangas published in the future, which currently is primarily 3rd party hosted stuff
-            // Check MD discord sometimes to see if they added API solutions to this...
-            //if (new Date(entry.attributes.publishAt).getTime() > Date.now()) continue;
             let manga;
             for (let rel of entry.relationships) {
                 if (rel.type == "manga") {
@@ -1341,7 +1338,7 @@
     }
 
     function getMangaId() {
-        let m = location.pathname.match("^/title/(.*)$");
+        let m = location.pathname.match("^/title/([a-f0-9-]+)");
         if (!m)
             throw Error("Unknown mangaId");
         return m[1];
@@ -1514,7 +1511,7 @@
     const mainMap = new Map([
         [/^\/$/, main$3],
         //[/^\/titles\/latest\/$/, mainLatest],
-        [/^\/title\/[a-f0-9-]+$/, main$2]
+        [/^\/title\/[a-f0-9-]+/, main$2]
     ]);
     async function main() {
         await main$1();

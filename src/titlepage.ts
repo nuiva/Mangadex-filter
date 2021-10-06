@@ -4,7 +4,7 @@ import { NavMenu } from "./navMenu";
 import { isWritableElement } from "./utils";
 
 function getMangaId(): string {
-    let m = location.pathname.match("^/title/(.*)$");
+    let m = location.pathname.match("^/title/([a-f0-9-]+)");
     if (!m) throw Error("Unknown mangaId");
     return m[1];
 }

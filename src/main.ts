@@ -5,7 +5,7 @@ import update from "./update"
 const mainMap: Map<RegExp,CallableFunction> = new Map([
     [/^\/$/, mainFrontpage],
     //[/^\/titles\/latest\/$/, mainLatest],
-    [/^\/title\/[a-f0-9-]+$/, mainTitlepage]
+    [/^\/title\/[a-f0-9-]+/, mainTitlepage]
 ]);
 
 async function main() {
