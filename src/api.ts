@@ -16,7 +16,7 @@ export interface TagAttributes {
 export interface MangaAttributes {
     title: {
         en: string
-        jp: string
+        ja: string
     }
     altTitles: Array<{
         en: string
