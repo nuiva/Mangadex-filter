@@ -1046,8 +1046,8 @@
             tagsCached = [];
             let tagsFetched = await fetchThrottled("https://api.mangadex.org/manga/tag");
             let json = await tagsFetched.json();
-            for (let tag of json) {
-                tagsCached.push(tag.data.attributes.name.en);
+            for (let tag of json.data) {
+                tagsCached.push(tag.attributes.name.en);
             }
         }
         return tagsCached;

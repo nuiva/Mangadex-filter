@@ -2,14 +2,20 @@ import { ArrayField, ObjectField } from "../storage/src/storage";
 import { fetchThrottled, GenericObject, TagAttributes } from "./api";
 import { FILTERING_TAG_WEIGHTS } from "./options";
 
+interface TagResponse {
+    result: string // Should be "ok"
+    response: string // Should be "collection"
+    data: Array<GenericObject<TagAttributes>>
+}
+
 let tagsCached: Array<string> = null;
 async function getTags(): Promise<Array<string>> {
     if (tagsCached === null) {
         tagsCached = [];
         let tagsFetched = await fetchThrottled("https://api.mangadex.org/manga/tag");
-        let json: Array<{data: GenericObject<TagAttributes>}> = await tagsFetched.json();
-        for (let tag of json) {
-            tagsCached.push(tag.data.attributes.name.en);
+        let json: TagResponse = await tagsFetched.json();
+        for (let tag of json.data) {
+            tagsCached.push(tag.attributes.name.en);
         }
     }
     return tagsCached;
