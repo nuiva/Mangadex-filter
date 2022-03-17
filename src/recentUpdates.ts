@@ -1,10 +1,36 @@
+import { Variable } from "../storage/src/storage"
 import { ChapterAttributes, fetchCovers, fetchRecentChapters, GenericObject, MangaAttributes } from "./api"
 import { FilterButton } from "./filterButton"
 import { ImageTooltip } from "./imgTooltip"
 import { FilterIndicator, Manga } from "./manga"
 import { addStyle, getStyleContainer } from "./style"
 import { TimeText } from "./timeText"
+import { initializeCustomElement, sleep } from "./utils"
 
+@initializeCustomElement("img")
+class MangaCover extends HTMLImageElement {
+    static fetchDelayPromise = new Promise<void>(f => f())
+    constructor(public mangaId: string, public srcOption: Variable) {
+        super();
+        this.classList.add("hover-tooltip");
+    }
+    setCover = () => {
+        if (!this.srcOption.get()) return;
+        MangaCover.fetchDelayPromise = MangaCover.fetchDelayPromise.then(async () => {
+            this.src = `https://uploads.mangadex.org/covers/${this.mangaId}/${this.srcOption.get()}.256.jpg`;
+            await sleep(200);
+        });
+    }
+    connectedCallback() {
+        this.setCover();
+        this.srcOption.addChangeListener(this.setCover);
+    }
+    disconnectedCallback() {
+        this.srcOption.removeChangeListener(this.setCover);
+    }
+}
+
+@initializeCustomElement("div")
 class ChapterRow extends HTMLDivElement {
     timestamp: number
     constructor(public chapter: GenericObject<ChapterAttributes>) {
@@ -15,12 +41,9 @@ class ChapterRow extends HTMLDivElement {
         this.timestamp = new Date(chapter.attributes.publishAt).getTime();
         this.append(new TimeText(this.timestamp), chapterLink);
     }
-    static initialize() {
-        customElements.define("chapter-row", ChapterRow, {extends: "div"});
-        TimeText.initialize();
-    }
 }
 
+@initializeCustomElement("tr")
 class MangaRow extends HTMLTableRowElement {
     cover: HTMLImageElement
     coverFetched = false
@@ -30,10 +53,8 @@ class MangaRow extends HTMLTableRowElement {
     constructor(public manga: Manga) {
         super();
         // Create cover
-        this.cover = document.createElement("img");
-        this.cover.classList.add("hover-tooltip");
-        if (manga.cover.get()) this.setCover(manga.cover.get());
-        this.addTd(this.cover);
+        this.cover = new MangaCover(manga.id, manga.cover);
+        this.addTd();
         // Create title
         {
             let title = document.createElement("a");
@@ -61,6 +82,7 @@ class MangaRow extends HTMLTableRowElement {
             this.classList.add("filtered-manga");
         } else {
             this.classList.remove("filtered-manga");
+            this.firstElementChild.appendChild(this.cover);
         }
     }
     addTd(...content: Array<HTMLElement>) {
@@ -71,17 +93,12 @@ class MangaRow extends HTMLTableRowElement {
         return this.appendChild(td);
     }
     setCover(filename: string) {
-        this.cover.src = `https://uploads.mangadex.org/covers/${this.manga.id}/${filename}.256.jpg`;
         this.manga.cover.set(filename);
         this.coverFetched = true;
     }
-    static initialize() {
-        ChapterRow.initialize();
-        FilterButton.initialize();
-        customElements.define("manga-row", MangaRow, {extends: "tr"});
-    }
 }
 
+@initializeCustomElement("table")
 export class ChapterTable extends HTMLTableElement {
     mangaCache = new Map<string,MangaRow>();
     offset: number = 0
@@ -140,7 +157,21 @@ export class ChapterTable extends HTMLTableElement {
         return added;
     }
     async fetchMoreVisible() {
-        while ((await this.fetchMore()).length === 0);
+        for (let i = 0; i < 20; ++i) {
+            if ((await this.fetchMore()).length > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+    async fetchMoreUntilFullTable() {
+        let scrollEl = document.scrollingElement as HTMLElement;
+        while (scrollEl.offsetHeight == scrollEl.scrollHeight) {
+            if (!await this.fetchMoreVisible()) {
+                return false;
+            }
+        }
+        return true;
     }
     async fetchCovers() {
         let mangasToFetchSet = new Set<string>();
@@ -155,12 +186,9 @@ export class ChapterTable extends HTMLTableElement {
             }
         }
     }
-    static initialize() {
-        MangaRow.initialize();
-        customElements.define("chapter-table", ChapterTable, {extends: "table"});
-    }
 }
 
+@initializeCustomElement("div")
 export class ChapterTableContainer extends HTMLDivElement {
     table: ChapterTable
     showFilteredButton: HTMLButtonElement
@@ -169,7 +197,7 @@ export class ChapterTableContainer extends HTMLDivElement {
     constructor() {
         super();
         this.table = new ChapterTable();
-        this.table.fetchMoreVisible();
+        this.table.fetchMoreUntilFullTable();
         // Fetch new
         /*let addNewButton = document.createElement("button");
         addNewButton.textContent = "Fetch new";
@@ -183,7 +211,7 @@ export class ChapterTableContainer extends HTMLDivElement {
         // Fetch older
         let addMoreButton = document.createElement("button");
         addMoreButton.textContent = "Fetch older";
-        addMoreButton.addEventListener("click", () => this.table.fetchMore());
+        addMoreButton.addEventListener("click", () => this.table.fetchMoreVisible());
         this.showFilteredButton = document.createElement("button");
         this.showFilteredButton.textContent = "Show filtered";
         this.showFilteredButton.addEventListener("click", () => this.toggleShowFiltered());
@@ -214,11 +242,5 @@ export class ChapterTableContainer extends HTMLDivElement {
             getStyleContainer(this).appendChild(this.filterStyle);
             this.showFilteredButton.textContent = "Show filtered";
         }
-    }
-    static initialize() {
-        ChapterTable.initialize();
-        customElements.define("chapter-table-container", ChapterTableContainer, {extends: "div"});
-        ImageTooltip.initialize();
-        FilterIndicator.initialize();
     }
 }
