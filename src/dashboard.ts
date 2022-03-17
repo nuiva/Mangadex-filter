@@ -1,9 +1,12 @@
 import { ChapterTableContainer } from "./recentUpdates";
 import { addStyle } from "./style";
 import { TagWeightTable } from "./tagWeights";
+import { initializeCustomElement } from "./utils";
 
 let dashboardCache: Dashboard = null;
 let origBody: HTMLBodyElement = null;
+
+@initializeCustomElement("body", "mdf-dashboard")
 export class Dashboard extends HTMLBodyElement {
     currentView: any
     header: HTMLElement = document.createElement("nav")
@@ -78,7 +81,6 @@ export class Dashboard extends HTMLBodyElement {
             this.currentView = null;
         }
         if (this.recentChapterTable === null) {
-            ChapterTableContainer.initialize();
             this.recentChapterTable = new ChapterTableContainer();
         }
         this.currentView = this.content.appendChild(this.recentChapterTable);
@@ -100,14 +102,6 @@ export class Dashboard extends HTMLBodyElement {
         dashboardCache ??= new Dashboard();
         origBody = document.body as HTMLBodyElement;
         document.body = dashboardCache;
-    }
-    static initialized = false;
-    static initialize() {
-        if (this.initialized) {
-            console.warn("Called Dashboard.initialize twice.");
-            return;
-        }
-        this.initialized = true;
-        customElements.define("mdf-dashboard", Dashboard, {extends: "body"});
+        return dashboardCache;
     }
 }

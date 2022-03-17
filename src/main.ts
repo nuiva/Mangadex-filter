@@ -2,7 +2,7 @@ import mainFrontpage from "./frontpage"
 import mainTitlepage from "./titlepage"
 import update from "./update"
 
-const mainMap: Map<RegExp,CallableFunction> = new Map([
+const mainMap: Map<RegExp,() => Promise<CallableFunction>> = new Map([
     [/^\/$/, mainFrontpage],
     //[/^\/titles\/latest\/$/, mainLatest],
     [/^\/title\/[a-f0-9-]+/, mainTitlepage]
@@ -10,11 +10,23 @@ const mainMap: Map<RegExp,CallableFunction> = new Map([
 
 async function main() {
     await update();
-    for (let [k,f] of mainMap.entries()) {
-        if (k.test(location.pathname)) {
-            f();
+    let cancelFuncs: Array<Promise<CallableFunction>> = [];
+    function startPageMains() {
+        for (let [k,f] of mainMap.entries()) {
+            if (k.test(location.pathname)) {
+                cancelFuncs.push(f());
+            }
         }
     }
+    startPageMains();
+
+    let currentPage = location.href;
+    setInterval(async () => {
+        if (location.href == currentPage) return;
+        currentPage = location.href;
+        for (let p of cancelFuncs) (await p)();
+        startPageMains();
+    })
 }
 
 main();

@@ -1,3 +1,6 @@
+import { initializeCustomElement } from "./utils";
+
+@initializeCustomElement("time")
 export class TimeText extends HTMLTimeElement {
     static thresholds: Array<[number,string]> = [
         [1, "ms"],
@@ -31,8 +34,5 @@ export class TimeText extends HTMLTimeElement {
             diff - multiplier * TimeText.thresholds[i][0] + 1 :
             (multiplier + 1) * TimeText.thresholds[i][0] - diff;
         this.timeoutID = setTimeout(this.onTimeout, untilNext);
-    }
-    static initialize() {
-        customElements.define("time-text", TimeText, {extends: "time"});
     }
 }

@@ -1,7 +1,7 @@
 import { FilterButton, LanguageFilterButton } from "./filterButton";
+import { addKeyboardHandler } from "./keyboard";
 import { FilterIndicator, Manga } from "./manga";
 import { NavMenu } from "./navMenu";
-import { isWritableElement } from "./utils";
 
 function getMangaId(): string {
     let m = location.pathname.match("^/title/([a-f0-9-]+)");
@@ -9,29 +9,23 @@ function getMangaId(): string {
     return m[1];
 }
 
-export default function main() {
+export default async function main(): Promise<CallableFunction> {
     // Create navmenu
-    NavMenu.initialize();
     let menu = new NavMenu(false);
     document.body.appendChild(menu);
     // Get opened manga
     let mangaId = getMangaId();
     let manga = new Manga(mangaId);
     // Manga filter
-    {
-        FilterButton.initialize();
-        menu.appendButton(new FilterButton(manga.filtered));
-    }
+    menu.appendButton(new FilterButton(manga.filtered));
     // Lang filter
     if (manga.language.get()) {
-        LanguageFilterButton.initialize();
         menu.appendButton(new LanguageFilterButton(manga.language));
     }
     // Filter indicator
-    FilterIndicator.initialize();
     menu.appendChild(new FilterIndicator(manga.filterStatus, new Map([[2, "Filtered by tags"]])));
     // Keyboard
-    let kbHandlers: {[key: string]: () => void} = {
+    let removeKeyboardHandler = addKeyboardHandler({
         "c": function(){
             navigator.clipboard.writeText(manga.title.get()).then(
                 () => "#0f0",
@@ -46,10 +40,9 @@ export default function main() {
         "f": function(){
             manga.filtered.toggle();
         }
-    }
-    addEventListener("keydown", (e: KeyboardEvent) => {
-        if (!(e.target instanceof HTMLElement)) throw TypeError("Unknown event target type.");
-        if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || isWritableElement(e.target)) return;
-        kbHandlers[e.key]?.();
     });
+    return function detach() {
+        removeKeyboardHandler();
+        menu.remove()
+    }
 }

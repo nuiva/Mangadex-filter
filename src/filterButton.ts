@@ -1,5 +1,6 @@
 import { ObjectField, SetIndicator } from "../storage/src/storage";
 import { FILTERED_LANGS } from "./options";
+import { createStyle, initializeCustomElement } from "./utils";
 
 interface ToggleableOption {
     toggle: () => void
@@ -7,6 +8,7 @@ interface ToggleableOption {
     addChangeListener: (_: () => void) => void
 }
 
+@initializeCustomElement("button")
 export class FilterButton extends HTMLButtonElement {
     constructor(
         public filterOption: ToggleableOption
@@ -27,23 +29,19 @@ export class FilterButton extends HTMLButtonElement {
         }
     }
     static typeName = "filter-button";
-    static initialize() {
-        let style = document.createElement("style");
-        style.innerHTML = `
-            .${this.typeName} {
-                padding: 5px;
-                border-radius: 10px;
-                height: 20px;
-                text-align: center;
-                vertical-align: middle;
-                line-height: 12px;
-            }
-        `;
-        document.head.appendChild(style);
-        customElements.define(this.typeName, this, {extends: "button"});
-    }
 }
+document.head.appendChild(createStyle(`
+    .${FilterButton.typeName} {
+        padding: 5px;
+        border-radius: 10px;
+        height: 20px;
+        text-align: center;
+        vertical-align: middle;
+        line-height: 12px;
+    }
+`));
 
+@initializeCustomElement("button")
 export class LanguageFilterButton extends FilterButton {
     filterOption: SetIndicator
     constructor(language: ObjectField) {

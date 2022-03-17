@@ -6,7 +6,8 @@
         "lib": ["es6", "es2016", "ES2021", "dom", "DOM.Iterable"],
         "downlevelIteration": true,
         "target": "ES2021",
-        "outDir": "./build"
+        "outDir": "./build",
+        "experimentalDecorators": true
     },
     "include": [
         "./src/*.ts",

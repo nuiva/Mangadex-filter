@@ -87,16 +87,14 @@ export class FilterIndicator extends HTMLDivElement {
     constructor(public filterStatus: FilterStatus, public filterTexts: Map<number, string> = FilterIndicator.filterTexts) {
         super();
         this.classList.add("filter-indicator");
-        this.filterStatus.addChangeListener(this.update);
+        this.filterStatus.addChangeListener(() => this.update());
         this.update();
     }
-    update = () => {
+    update() {
         this.textContent = this.filterTexts.get(this.filterStatus.get()) ?? "";
     }
-    static initialize() {
-        customElements.define("filter-indicator", FilterIndicator, {extends: "div"});
-    }
 }
+customElements.define("filter-indicator", FilterIndicator, {extends: "div"});
 
 export class Manga {
     static updateInterval = 30 * 24 * 60 * 60 * 1000;
@@ -126,15 +124,17 @@ export class Manga {
     }
     updateFrom(json: GenericObject<MangaAttributes>) {
         console.assert(this.id === json.id);
-        this.title.set(json.attributes.title.en || json.attributes.title.ja);
-        let tags = new Set<string>();
-        for (let tag of json.attributes.tags) {
-            tags.add(tag.attributes.name.en);
+        if (json.attributes) {
+            this.title.set(json.attributes.title.en || json.attributes.title.ja);
+            let tags = new Set<string>();
+            for (let tag of json.attributes.tags) {
+                tags.add(tag.attributes.name.en);
+            }
+            this.tags.set(tags);
+            this.lastUpdate.set(Date.now());
+            this.demographic.set(json.attributes.publicationDemographic);
+            this.language.set(json.attributes.originalLanguage);
         }
-        this.tags.set(tags);
-        this.lastUpdate.set(Date.now());
-        this.demographic.set(json.attributes.publicationDemographic);
-        this.language.set(json.attributes.originalLanguage);
     }
     destroy() {
         this.filterStatus.destroy();

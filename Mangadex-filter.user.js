@@ -9,6 +9,8 @@
 // @grant        GM_deleteValue
 // @grant       GM_addValueChangeListener
 // @grant       GM_removeValueChangeListener
+// @grant unsafeWindow
+// @icon        data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAFUElEQVRYw81Xa1BVVRT+9j6Hc+65cLmgApdHg11AEhCLCz2shPKFmDpgjtU02kxTOo05TlZmjo01pmPlTI790MZ85A8zJjXwNRY1Y2aJg0CjBDGogHJBecZ9nHvOuWf3gyBe13ugnGn923u9vrX2WnuvTWCQ7A6H1eTTFmqMzKKUZkJniQxsQh+XdBCCRhD2G/PTMlUiJ65VVPQYsUuCCaRkPTqV+HzrCfRlADEZQkuIlzF2BCZu+x8VFbXjAuBwOMwuxf8hYWQ1Y4zHOIgQohHGdvWmpWy8WVzsNQwgNTs7lXr9R3WwtNH4M+wJWDQlFnYzjxe+vQjNrwfDUg6NFNbVVbYEBfDAtCwH09kZgE0avG+VTNiYOw1zBBdM7m4ouYVQYxKRvXK9sWyAtPhD+AX1VZeqBu/T4ZEPd04JwftzHbiQa8MiVz1EjsK99lP4Zi9DZVW14eNgYHFUU0+kpj4UNyqAvLyXTJD9Xw92nhw1AeeKsrDM0wDO1Q1mtsDz6gfQJ9pAXD04/MPPYysKhngSghKHw2EeAaDtTtVWMJbZv56ZkoBjOZGY1NYwoO8rWA7d2oePa65H1c22MRcmY8zhUbChf831px5+drAf0Ax7AvYkU/Cu7n8URQne598AKNeneP0K0ogXXRrQ1PXnWGE4Eu+L3+90Ol0UAIhPW9/fanHWMOyZagLnHmrUn5gK8CEAAL6mHOL5UszsrMXeODd+WpKFgnT7GLKAUI9Xew8AyObNH0eXnj52w+XySADw47M5iG2tH6GkOp6CnL8c5q92gGu4MtIq5XBxQgpeKb0Exe83ckd4mOqxkX37DuwsKMhfc+rMWYTUVuDFrtErW7clgrh7QHq772rYaUvB/JIqyIoaPBM8fY7GxcXOkyQJSwoXo6hwcUBh2toY1DkAxHi78Oa6tcbOQtOfptHR0QkD66RpYJYI/BvSHnwCBfPzIYpiUFkOmE6joqKkgZ0QAb68onE7ZyYzfLlF4HkeGelpQeV1QuxUFIUht6Hy+EL4708fy4uD6zEp+Eay41B4BhpudwIAnlkw30g7hFNChj0HlMKzYgP8ccbaigkm3FA4xGfPgGZPx9Wa3wEA8+bMQmrqlGCzgEqampo1qzWcG8FUZJhKv0BI+XcAY4EBWCIhL3oZ6vQnR/Bamm7inXXvovZWY6DsNZCKy5d7k5OSwu5W/cIvp8HXV4N2tgK6DiZK0OPtUDMeg5ozG0yURtUVKptx61INFhzYGuguuMB3tHfcSE5KyghYKLZEyIWr/g5XBxQFTBDhcrshe2WYFA2uzlZQjoKjHHieR0SEta8jJk8EX2cO3NqM/kqdbbdPGi84CogmEEJgCQuD1RoOl8sNQRBgliRwPAdKCWRZBmMMeqQZJUpT4OPT/WW87HHtVBTlbUEQiFEcfl1HT0/fzBkbaxt5basqCCG4fecODh8pDlSAvTExEecIAHxfVladk52dafA5xeDOaW/vgKqqfdETClEUIEkSOjo6sfK1NWhxOkcHwOgntTWX3+IBoLmpZfX0TOWcIAhGHhEAQHd3D2RZRmRkJERxpN7uz/cGdg4omiVk55CZcP+Xh05aLeEFRjIwHMzw46msrMLR4yVDZIdZ2VR3tXoLAAyM243XGhYfKT5+XgcewT0kQkhFqMhtH3Uq3pafN3lVPDsoEETdC+cK0P5Zm7hiU+nZ6wHHcrZqbgaY7/V7E764i+w+e8XQz4gtXSpgkjP0P3HcHusmxcXKaKzAX67Iawy6ZTkItoAhbHwRwwtKP4LNtm3cn1O2riARve6HxwXAElpOdpxqxP+Z/gI6tgfLZjV0agAAAABJRU5ErkJggg==
 // ==/UserScript==
 (function () {
     'use strict';
@@ -32,14 +34,14 @@
         }
         return returnValue;
     }
-    function sleep(ms) {
+    function sleep$1(ms) {
         return new Promise(f => setTimeout(f, ms));
     }
     const throttleTime = 200;
     let requestPromise = new Promise(f => f(undefined));
     function fetchThrottled(url) {
         let fetchPromise = requestPromise.then(() => fetch(url));
-        requestPromise = fetchPromise.then(() => sleep(throttleTime));
+        requestPromise = fetchPromise.then(() => sleep$1(throttleTime));
         return fetchPromise;
     }
     async function fetchCovers(...mangaIdArray) {
@@ -547,13 +549,35 @@
     let FILTERED_LANGS = new JsonSetWrapper(new ArrayWrapper(new ObjectField(options, "FILTERED_LANGS")));
     let FILTERING_TAG_WEIGHTS = new ArrayWrapper(new ObjectField(options, "FILTERING_TAG_WEIGHTS"));
 
-    class FilterButton extends HTMLButtonElement {
+    function sleep(ms) {
+        return new Promise(f => setTimeout(f, ms));
+    }
+    function createStyle(css) {
+        let style = document.createElement("style");
+        style.innerHTML = css;
+        return style;
+    }
+    // Decorator
+    function initializeCustomElement(parentTagName, tagName) {
+        return function (cls) {
+            customElements.define(tagName ?? cls.name.replaceAll(/([A-Z])/g, "-$1").replace(/^-/, "").toLowerCase(), cls, parentTagName && { extends: parentTagName });
+        };
+    }
+
+    var __decorate$5 = (undefined && undefined.__decorate) || function (decorators, target, key, desc) {
+        var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+        if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+        else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+        return c > 3 && r && Object.defineProperty(target, key, r), r;
+    };
+    var FilterButton_1, LanguageFilterButton_1;
+    let FilterButton = FilterButton_1 = class FilterButton extends HTMLButtonElement {
         constructor(filterOption) {
             super();
             this.filterOption = filterOption;
             this.addEventListener("click", filterOption.toggle.bind(filterOption));
             filterOption.addChangeListener(this.onOptionChanged.bind(this));
-            this.classList.add(FilterButton.typeName);
+            this.classList.add(FilterButton_1.typeName);
             this.onOptionChanged();
         }
         onOptionChanged() {
@@ -566,27 +590,25 @@
                 this.style.backgroundColor = "#f00";
             }
         }
-        static initialize() {
-            let style = document.createElement("style");
-            style.innerHTML = `
-            .${this.typeName} {
-                padding: 5px;
-                border-radius: 10px;
-                height: 20px;
-                text-align: center;
-                vertical-align: middle;
-                line-height: 12px;
-            }
-        `;
-            document.head.appendChild(style);
-            customElements.define(this.typeName, this, { extends: "button" });
-        }
-    }
+    };
     FilterButton.typeName = "filter-button";
-    class LanguageFilterButton extends FilterButton {
+    FilterButton = FilterButton_1 = __decorate$5([
+        initializeCustomElement("button")
+    ], FilterButton);
+    document.head.appendChild(createStyle(`
+    .${FilterButton.typeName} {
+        padding: 5px;
+        border-radius: 10px;
+        height: 20px;
+        text-align: center;
+        vertical-align: middle;
+        line-height: 12px;
+    }
+`));
+    let LanguageFilterButton = LanguageFilterButton_1 = class LanguageFilterButton extends FilterButton {
         constructor(language) {
             super(new SetIndicator(FILTERED_LANGS, language));
-            this.classList.add(LanguageFilterButton.typeName);
+            this.classList.add(LanguageFilterButton_1.typeName);
         }
         onOptionChanged() {
             if (this.filterOption.get()) {
@@ -598,10 +620,19 @@
                 this.style.backgroundColor = "#f00";
             }
         }
-    }
+    };
     LanguageFilterButton.typeName = "language-filter-button";
+    LanguageFilterButton = LanguageFilterButton_1 = __decorate$5([
+        initializeCustomElement("button")
+    ], LanguageFilterButton);
 
-    class ImageTooltip extends HTMLImageElement {
+    var __decorate$4 = (undefined && undefined.__decorate) || function (decorators, target, key, desc) {
+        var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+        if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+        else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+        return c > 3 && r && Object.defineProperty(target, key, r), r;
+    };
+    let ImageTooltip = class ImageTooltip extends HTMLImageElement {
         constructor(targetClass) {
             super();
             this.targetClass = targetClass;
@@ -639,10 +670,10 @@
             this.parentNode.removeEventListener("mouseover", this.onMouseover);
             this.parentNode.removeEventListener("mouseout", this.onMouseout);
         }
-        static initialize() {
-            customElements.define("image-tooltip", ImageTooltip, { extends: "img" });
-        }
-    }
+    };
+    ImageTooltip = __decorate$4([
+        initializeCustomElement("img")
+    ], ImageTooltip);
 
     class TagFilteredBool extends BoolWrapper {
         constructor(tags, demographic, rating) {
@@ -712,15 +743,12 @@
             super();
             this.filterStatus = filterStatus;
             this.filterTexts = filterTexts;
-            this.update = () => {
-                this.textContent = this.filterTexts.get(this.filterStatus.get()) ?? "";
-            };
             this.classList.add("filter-indicator");
-            this.filterStatus.addChangeListener(this.update);
+            this.filterStatus.addChangeListener(() => this.update());
             this.update();
         }
-        static initialize() {
-            customElements.define("filter-indicator", FilterIndicator, { extends: "div" });
+        update() {
+            this.textContent = this.filterTexts.get(this.filterStatus.get()) ?? "";
         }
     }
     FilterIndicator.filterTexts = new Map([
@@ -729,6 +757,7 @@
         [2, "Filtered by tags"],
         [3, "Filtered by language"]
     ]);
+    customElements.define("filter-indicator", FilterIndicator, { extends: "div" });
     class Manga {
         constructor(id) {
             this.id = id;
@@ -746,15 +775,17 @@
         }
         updateFrom(json) {
             console.assert(this.id === json.id);
-            this.title.set(json.attributes.title.en || json.attributes.title.ja);
-            let tags = new Set();
-            for (let tag of json.attributes.tags) {
-                tags.add(tag.attributes.name.en);
+            if (json.attributes) {
+                this.title.set(json.attributes.title.en || json.attributes.title.ja);
+                let tags = new Set();
+                for (let tag of json.attributes.tags) {
+                    tags.add(tag.attributes.name.en);
+                }
+                this.tags.set(tags);
+                this.lastUpdate.set(Date.now());
+                this.demographic.set(json.attributes.publicationDemographic);
+                this.language.set(json.attributes.originalLanguage);
             }
-            this.tags.set(tags);
-            this.lastUpdate.set(Date.now());
-            this.demographic.set(json.attributes.publicationDemographic);
-            this.language.set(json.attributes.originalLanguage);
         }
         destroy() {
             this.filterStatus.destroy();
@@ -785,7 +816,14 @@
         return style;
     }
 
-    class TimeText extends HTMLTimeElement {
+    var __decorate$3 = (undefined && undefined.__decorate) || function (decorators, target, key, desc) {
+        var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+        if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+        else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+        return c > 3 && r && Object.defineProperty(target, key, r), r;
+    };
+    var TimeText_1;
+    let TimeText = TimeText_1 = class TimeText extends HTMLTimeElement {
         constructor(timestamp) {
             super();
             this.timestamp = timestamp;
@@ -795,14 +833,14 @@
                 let sign = Math.sign(diff);
                 diff = Math.abs(diff);
                 let i = 0;
-                while (i < TimeText.thresholds.length && TimeText.thresholds[i][0] < diff)
+                while (i < TimeText_1.thresholds.length && TimeText_1.thresholds[i][0] < diff)
                     ++i;
                 i = Math.max(0, i - 1);
-                let multiplier = Math.floor(diff / TimeText.thresholds[i][0]);
-                this.textContent = multiplier + TimeText.thresholds[i][1] + (sign == -1 ? " ago" : "");
+                let multiplier = Math.floor(diff / TimeText_1.thresholds[i][0]);
+                this.textContent = multiplier + TimeText_1.thresholds[i][1] + (sign == -1 ? " ago" : "");
                 let untilNext = sign === 1 ?
-                    diff - multiplier * TimeText.thresholds[i][0] + 1 :
-                    (multiplier + 1) * TimeText.thresholds[i][0] - diff;
+                    diff - multiplier * TimeText_1.thresholds[i][0] + 1 :
+                    (multiplier + 1) * TimeText_1.thresholds[i][0] - diff;
                 this.timeoutID = setTimeout(this.onTimeout, untilNext);
             };
             this.classList.add("time-text");
@@ -814,10 +852,7 @@
         disconnectedCallback() {
             clearTimeout(this.timeoutID);
         }
-        static initialize() {
-            customElements.define("time-text", TimeText, { extends: "time" });
-        }
-    }
+    };
     TimeText.thresholds = [
         [1, "ms"],
         [1000, "s"],
@@ -825,8 +860,45 @@
         [1000 * 60 * 60, "h"],
         [1000 * 60 * 60 * 24, "d"]
     ];
+    TimeText = TimeText_1 = __decorate$3([
+        initializeCustomElement("time")
+    ], TimeText);
 
-    class ChapterRow extends HTMLDivElement {
+    var __decorate$2 = (undefined && undefined.__decorate) || function (decorators, target, key, desc) {
+        var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+        if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+        else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+        return c > 3 && r && Object.defineProperty(target, key, r), r;
+    };
+    var MangaCover_1;
+    let MangaCover = MangaCover_1 = class MangaCover extends HTMLImageElement {
+        constructor(mangaId, srcOption) {
+            super();
+            this.mangaId = mangaId;
+            this.srcOption = srcOption;
+            this.setCover = () => {
+                if (!this.srcOption.get())
+                    return;
+                MangaCover_1.fetchDelayPromise = MangaCover_1.fetchDelayPromise.then(async () => {
+                    this.src = `https://uploads.mangadex.org/covers/${this.mangaId}/${this.srcOption.get()}.256.jpg`;
+                    await sleep(200);
+                });
+            };
+            this.classList.add("hover-tooltip");
+        }
+        connectedCallback() {
+            this.setCover();
+            this.srcOption.addChangeListener(this.setCover);
+        }
+        disconnectedCallback() {
+            this.srcOption.removeChangeListener(this.setCover);
+        }
+    };
+    MangaCover.fetchDelayPromise = new Promise(f => f());
+    MangaCover = MangaCover_1 = __decorate$2([
+        initializeCustomElement("img")
+    ], MangaCover);
+    let ChapterRow = class ChapterRow extends HTMLDivElement {
         constructor(chapter) {
             super();
             this.chapter = chapter;
@@ -836,12 +908,11 @@
             this.timestamp = new Date(chapter.attributes.publishAt).getTime();
             this.append(new TimeText(this.timestamp), chapterLink);
         }
-        static initialize() {
-            customElements.define("chapter-row", ChapterRow, { extends: "div" });
-            TimeText.initialize();
-        }
-    }
-    class MangaRow extends HTMLTableRowElement {
+    };
+    ChapterRow = __decorate$2([
+        initializeCustomElement("div")
+    ], ChapterRow);
+    let MangaRow = class MangaRow extends HTMLTableRowElement {
         constructor(manga) {
             super();
             this.manga = manga;
@@ -854,14 +925,12 @@
                 }
                 else {
                     this.classList.remove("filtered-manga");
+                    this.firstElementChild.appendChild(this.cover);
                 }
             };
             // Create cover
-            this.cover = document.createElement("img");
-            this.cover.classList.add("hover-tooltip");
-            if (manga.cover.get())
-                this.setCover(manga.cover.get());
-            this.addTd(this.cover);
+            this.cover = new MangaCover(manga.id, manga.cover);
+            this.addTd();
             // Create title
             {
                 let title = document.createElement("a");
@@ -894,17 +963,14 @@
             return this.appendChild(td);
         }
         setCover(filename) {
-            this.cover.src = `https://uploads.mangadex.org/covers/${this.manga.id}/${filename}.256.jpg`;
             this.manga.cover.set(filename);
             this.coverFetched = true;
         }
-        static initialize() {
-            ChapterRow.initialize();
-            FilterButton.initialize();
-            customElements.define("manga-row", MangaRow, { extends: "tr" });
-        }
-    }
-    class ChapterTable extends HTMLTableElement {
+    };
+    MangaRow = __decorate$2([
+        initializeCustomElement("tr")
+    ], MangaRow);
+    let ChapterTable = class ChapterTable extends HTMLTableElement {
         constructor() {
             super();
             this.mangaCache = new Map();
@@ -963,8 +1029,21 @@
             return added;
         }
         async fetchMoreVisible() {
-            while ((await this.fetchMore()).length === 0)
-                ;
+            for (let i = 0; i < 20; ++i) {
+                if ((await this.fetchMore()).length > 0) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        async fetchMoreUntilFullTable() {
+            let scrollEl = document.scrollingElement;
+            while (scrollEl.offsetHeight == scrollEl.scrollHeight) {
+                if (!await this.fetchMoreVisible()) {
+                    return false;
+                }
+            }
+            return true;
         }
         async fetchCovers() {
             let mangasToFetchSet = new Set();
@@ -980,16 +1059,15 @@
                 }
             }
         }
-        static initialize() {
-            MangaRow.initialize();
-            customElements.define("chapter-table", ChapterTable, { extends: "table" });
-        }
-    }
-    class ChapterTableContainer extends HTMLDivElement {
+    };
+    ChapterTable = __decorate$2([
+        initializeCustomElement("table")
+    ], ChapterTable);
+    let ChapterTableContainer = class ChapterTableContainer extends HTMLDivElement {
         constructor() {
             super();
             this.table = new ChapterTable();
-            this.table.fetchMoreVisible();
+            this.table.fetchMoreUntilFullTable();
             // Fetch new
             /*let addNewButton = document.createElement("button");
             addNewButton.textContent = "Fetch new";
@@ -1003,7 +1081,7 @@
             // Fetch older
             let addMoreButton = document.createElement("button");
             addMoreButton.textContent = "Fetch older";
-            addMoreButton.addEventListener("click", () => this.table.fetchMore());
+            addMoreButton.addEventListener("click", () => this.table.fetchMoreVisible());
             this.showFilteredButton = document.createElement("button");
             this.showFilteredButton.textContent = "Show filtered";
             this.showFilteredButton.addEventListener("click", () => this.toggleShowFiltered());
@@ -1032,13 +1110,10 @@
                 this.showFilteredButton.textContent = "Show filtered";
             }
         }
-        static initialize() {
-            ChapterTable.initialize();
-            customElements.define("chapter-table-container", ChapterTableContainer, { extends: "div" });
-            ImageTooltip.initialize();
-            FilterIndicator.initialize();
-        }
-    }
+    };
+    ChapterTableContainer = __decorate$2([
+        initializeCustomElement("div")
+    ], ChapterTableContainer);
 
     let tagsCached = null;
     async function getTags() {
@@ -1173,9 +1248,16 @@
     }
     customElements.define("tag-weight-table", TagWeightTable, { extends: "table" });
 
+    var __decorate$1 = (undefined && undefined.__decorate) || function (decorators, target, key, desc) {
+        var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+        if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+        else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+        return c > 3 && r && Object.defineProperty(target, key, r), r;
+    };
+    var Dashboard_1;
     let dashboardCache = null;
     let origBody = null;
-    class Dashboard extends HTMLBodyElement {
+    let Dashboard = Dashboard_1 = class Dashboard extends HTMLBodyElement {
         constructor() {
             super();
             this.header = document.createElement("nav");
@@ -1247,7 +1329,6 @@
                 this.currentView = null;
             }
             if (this.recentChapterTable === null) {
-                ChapterTableContainer.initialize();
                 this.recentChapterTable = new ChapterTableContainer();
             }
             this.currentView = this.content.appendChild(this.recentChapterTable);
@@ -1266,22 +1347,23 @@
             document.body = origBody;
         }
         static show() {
-            dashboardCache ??= new Dashboard();
+            dashboardCache ??= new Dashboard_1();
             origBody = document.body;
             document.body = dashboardCache;
+            return dashboardCache;
         }
-        static initialize() {
-            if (this.initialized) {
-                console.warn("Called Dashboard.initialize twice.");
-                return;
-            }
-            this.initialized = true;
-            customElements.define("mdf-dashboard", Dashboard, { extends: "body" });
-        }
-    }
-    Dashboard.initialized = false;
+    };
+    Dashboard = Dashboard_1 = __decorate$1([
+        initializeCustomElement("body", "mdf-dashboard")
+    ], Dashboard);
 
-    class NavMenu extends HTMLElement {
+    var __decorate = (undefined && undefined.__decorate) || function (decorators, target, key, desc) {
+        var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+        if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+        else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+        return c > 3 && r && Object.defineProperty(target, key, r), r;
+    };
+    let NavMenu = class NavMenu extends HTMLElement {
         constructor(addDashboardButton = true) {
             super();
             this.shadow = this.attachShadow({ mode: "open" });
@@ -1291,7 +1373,6 @@
             this.style.zIndex = "99999";
             this.style.backgroundColor = "#fff";
             if (addDashboardButton) {
-                Dashboard.initialize();
                 this.emplaceButton("Dashboard", Dashboard.show);
             }
             addStyle(this.shadow, `
@@ -1315,26 +1396,43 @@
             button.addEventListener("click", callback);
             this.appendButton(button);
         }
-        static initialize() {
-            customElements.define("nav-menu", NavMenu);
-        }
-    }
+    };
+    NavMenu = __decorate([
+        initializeCustomElement()
+    ], NavMenu);
 
     async function main$3() {
         await new Promise(f => setTimeout(f, 2000));
-        NavMenu.initialize();
         let nav = new NavMenu();
         document.body.appendChild(nav);
-        Dashboard.show();
+        let dashboard = Dashboard.show();
+        return () => {
+            dashboard.hide();
+            nav.remove();
+        };
     }
 
-    // Returns the least index i such that list[i] > query
     // Returns whether the active element is writable by the user (i.e. is input, textbox, etc.)
     function isWritableElement(el) {
         if (el instanceof HTMLInputElement) {
             return el.type == "text";
         }
         return (el instanceof HTMLTextAreaElement) || el.isContentEditable;
+    }
+    // Returns a function that detaches the handler.
+    function addKeyboardHandler(callbacks) {
+        function handler(e) {
+            if (e.altKey || e.ctrlKey || e.metaKey)
+                return;
+            if (e.target instanceof HTMLElement && isWritableElement(e.target))
+                return;
+            if (e.key in callbacks) {
+                callbacks[e.key](e);
+                e.preventDefault();
+            }
+        }
+        addEventListener("keydown", handler);
+        return () => removeEventListener("keydown", handler);
     }
 
     function getMangaId() {
@@ -1343,29 +1441,23 @@
             throw Error("Unknown mangaId");
         return m[1];
     }
-    function main$2() {
+    async function main$2() {
         // Create navmenu
-        NavMenu.initialize();
         let menu = new NavMenu(false);
         document.body.appendChild(menu);
         // Get opened manga
         let mangaId = getMangaId();
         let manga = new Manga(mangaId);
         // Manga filter
-        {
-            FilterButton.initialize();
-            menu.appendButton(new FilterButton(manga.filtered));
-        }
+        menu.appendButton(new FilterButton(manga.filtered));
         // Lang filter
         if (manga.language.get()) {
-            LanguageFilterButton.initialize();
             menu.appendButton(new LanguageFilterButton(manga.language));
         }
         // Filter indicator
-        FilterIndicator.initialize();
         menu.appendChild(new FilterIndicator(manga.filterStatus, new Map([[2, "Filtered by tags"]])));
         // Keyboard
-        let kbHandlers = {
+        let removeKeyboardHandler = addKeyboardHandler({
             "c": function () {
                 navigator.clipboard.writeText(manga.title.get()).then(() => "#0f0", () => "#f00").then(async (c) => {
                     let el = document.querySelector("div.title p") ?? document.body;
@@ -1377,14 +1469,11 @@
             "f": function () {
                 manga.filtered.toggle();
             }
-        };
-        addEventListener("keydown", (e) => {
-            if (!(e.target instanceof HTMLElement))
-                throw TypeError("Unknown event target type.");
-            if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || isWritableElement(e.target))
-                return;
-            kbHandlers[e.key]?.();
         });
+        return function detach() {
+            removeKeyboardHandler();
+            menu.remove();
+        };
     }
 
     async function updateOldMangaIds(logger) {
@@ -1515,11 +1604,24 @@
     ]);
     async function main() {
         await main$1();
-        for (let [k, f] of mainMap.entries()) {
-            if (k.test(location.pathname)) {
-                f();
+        let cancelFuncs = [];
+        function startPageMains() {
+            for (let [k, f] of mainMap.entries()) {
+                if (k.test(location.pathname)) {
+                    cancelFuncs.push(f());
+                }
             }
         }
+        startPageMains();
+        let currentPage = location.href;
+        setInterval(async () => {
+            if (location.href == currentPage)
+                return;
+            currentPage = location.href;
+            for (let p of cancelFuncs)
+                (await p)();
+            startPageMains();
+        });
     }
     main();
 

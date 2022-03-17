@@ -1,3 +1,6 @@
+import { initializeCustomElement } from "./utils";
+
+@initializeCustomElement("img")
 export class ImageTooltip extends HTMLImageElement {
     currentTarget: HTMLImageElement = null
     constructor(public targetClass: string) {
@@ -31,8 +34,5 @@ export class ImageTooltip extends HTMLImageElement {
         let coords = this.currentTarget.getBoundingClientRect();
         this.style.top = Math.min(coords.top, window.innerHeight - this.height) + "px";
         this.style.left = coords.right + 5 + "px";
-    }
-    static initialize() {
-        customElements.define("image-tooltip", ImageTooltip, {extends: "img"});
     }
 }

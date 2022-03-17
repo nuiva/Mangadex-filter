@@ -1,3 +1,7 @@
+export function sleep(ms: number) {
+    return new Promise(f => setTimeout(f, ms));
+}
+
 // Returns the least index i such that list[i] > query
 // list must be an ascendingly sorted array
 export function binarySearch<T>(list: Array<number>, query: number) {
@@ -14,10 +18,15 @@ export function binarySearch<T>(list: Array<number>, query: number) {
     return left;
 }
 
-// Returns whether the active element is writable by the user (i.e. is input, textbox, etc.)
-export function isWritableElement(el: HTMLElement) {
-    if (el instanceof HTMLInputElement) {
-        return el.type == "text";
+export function createStyle(css: string): HTMLStyleElement {
+    let style = document.createElement("style");
+    style.innerHTML = css;
+    return style;
+}
+
+// Decorator
+export function initializeCustomElement(parentTagName?: string, tagName?: string) {
+    return function(cls: CustomElementConstructor & {name: string}) {
+        customElements.define(tagName ?? cls.name.replaceAll(/([A-Z])/g, "-$1").replace(/^-/,"").toLowerCase(), cls, parentTagName && {extends: parentTagName});
     }
-    return (el instanceof HTMLTextAreaElement) || el.isContentEditable;
 }
