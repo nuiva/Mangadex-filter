@@ -1067,7 +1067,7 @@
         constructor() {
             super();
             this.table = new ChapterTable();
-            this.table.fetchMoreUntilFullTable();
+            this.fetchMorePromise = this.table.fetchMoreUntilFullTable();
             // Fetch new
             /*let addNewButton = document.createElement("button");
             addNewButton.textContent = "Fetch new";
@@ -1081,7 +1081,7 @@
             // Fetch older
             let addMoreButton = document.createElement("button");
             addMoreButton.textContent = "Fetch older";
-            addMoreButton.addEventListener("click", () => this.table.fetchMoreVisible());
+            addMoreButton.addEventListener("click", () => this.fetchMorePromise = this.fetchMorePromise.then(() => this.table.fetchMoreVisible()));
             this.showFilteredButton = document.createElement("button");
             this.showFilteredButton.textContent = "Show filtered";
             this.showFilteredButton.addEventListener("click", () => this.toggleShowFiltered());
