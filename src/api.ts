@@ -1,3 +1,4 @@
+import { sleep } from "./utils"
 
 export interface GenericObject<AttributeType> {
     id: string
@@ -92,15 +93,12 @@ export async function fetchRecentChapters(offset: number = 0):
     return returnValue;
 }
 
-function sleep(ms: number) {
-    return new Promise(f => setTimeout(f, ms));
-}
-
 const throttleTime = 200;
 let requestPromise = new Promise(f => f(undefined));
 export function fetchThrottled(url: string) {
     let fetchPromise = requestPromise.then(() => fetch(url));
-    requestPromise = fetchPromise.then(() => sleep(throttleTime));
+    let throttlePromise = sleep(throttleTime);
+    requestPromise = fetchPromise.then(() => throttlePromise);
     return fetchPromise;
 }
 

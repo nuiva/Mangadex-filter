@@ -15,6 +15,21 @@
 (function () {
     'use strict';
 
+    function sleep(ms) {
+        return new Promise(f => setTimeout(f, ms));
+    }
+    function createStyle(css) {
+        let style = document.createElement("style");
+        style.innerHTML = css;
+        return style;
+    }
+    // Decorator
+    function initializeCustomElement(parentTagName, tagName) {
+        return function (cls) {
+            customElements.define(tagName ?? cls.name.replaceAll(/([A-Z])/g, "-$1").replace(/^-/, "").toLowerCase(), cls, parentTagName && { extends: parentTagName });
+        };
+    }
+
     function getUserOptionRequestString() {
         let s = "";
         let userOptionString = localStorage.getItem("md");
@@ -50,14 +65,12 @@
         }
         return returnValue;
     }
-    function sleep$1(ms) {
-        return new Promise(f => setTimeout(f, ms));
-    }
     const throttleTime = 200;
     let requestPromise = new Promise(f => f(undefined));
     function fetchThrottled(url) {
         let fetchPromise = requestPromise.then(() => fetch(url));
-        requestPromise = fetchPromise.then(() => sleep$1(throttleTime));
+        let throttlePromise = sleep(throttleTime);
+        requestPromise = fetchPromise.then(() => throttlePromise);
         return fetchPromise;
     }
     async function fetchCovers(...mangaIdArray) {
@@ -564,21 +577,6 @@
     let options = new GMOption("__OPTIONS");
     let FILTERED_LANGS = new JsonSetWrapper(new ArrayWrapper(new ObjectField(options, "FILTERED_LANGS")));
     let FILTERING_TAG_WEIGHTS = new ArrayWrapper(new ObjectField(options, "FILTERING_TAG_WEIGHTS"));
-
-    function sleep(ms) {
-        return new Promise(f => setTimeout(f, ms));
-    }
-    function createStyle(css) {
-        let style = document.createElement("style");
-        style.innerHTML = css;
-        return style;
-    }
-    // Decorator
-    function initializeCustomElement(parentTagName, tagName) {
-        return function (cls) {
-            customElements.define(tagName ?? cls.name.replaceAll(/([A-Z])/g, "-$1").replace(/^-/, "").toLowerCase(), cls, parentTagName && { extends: parentTagName });
-        };
-    }
 
     var __decorate$5 = (undefined && undefined.__decorate) || function (decorators, target, key, desc) {
         var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
