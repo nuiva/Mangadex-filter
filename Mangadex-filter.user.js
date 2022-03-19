@@ -879,6 +879,8 @@
             this.setCover = () => {
                 if (!this.srcOption.get())
                     return;
+                if (this.srcOption.get() == this.src)
+                    return;
                 MangaCover_1.fetchDelayPromise = MangaCover_1.fetchDelayPromise.then(async () => {
                     this.src = `https://uploads.mangadex.org/covers/${this.mangaId}/${this.srcOption.get()}.256.jpg`;
                     await sleep(200);
@@ -925,7 +927,7 @@
                 }
                 else {
                     this.classList.remove("filtered-manga");
-                    this.firstElementChild.appendChild(this.cover);
+                    this.loadCover();
                 }
             };
             // Create cover
@@ -965,6 +967,11 @@
         setCover(filename) {
             this.manga.cover.set(filename);
             this.coverFetched = true;
+        }
+        loadCover() {
+            if (this.cover.isConnected)
+                return;
+            this.firstElementChild.appendChild(this.cover);
         }
     };
     MangaRow = __decorate$2([
@@ -1059,6 +1066,11 @@
                 }
             }
         }
+        loadCovers() {
+            for (let mangaRow of this.rows) {
+                mangaRow.loadCover();
+            }
+        }
     };
     ChapterTable = __decorate$2([
         initializeCustomElement("table")
@@ -1102,8 +1114,9 @@
         }
         toggleShowFiltered() {
             if (this.filterStyle.isConnected) {
-                this.filterStyle.parentNode.removeChild(this.filterStyle);
+                this.filterStyle.remove();
                 this.showFilteredButton.textContent = "Hide filtered";
+                this.table.loadCovers();
             }
             else {
                 getStyleContainer(this).appendChild(this.filterStyle);

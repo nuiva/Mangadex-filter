@@ -16,6 +16,7 @@ class MangaCover extends HTMLImageElement {
     }
     setCover = () => {
         if (!this.srcOption.get()) return;
+        if (this.srcOption.get() == this.src) return;
         MangaCover.fetchDelayPromise = MangaCover.fetchDelayPromise.then(async () => {
             this.src = `https://uploads.mangadex.org/covers/${this.mangaId}/${this.srcOption.get()}.256.jpg`;
             await sleep(200);
@@ -82,7 +83,7 @@ class MangaRow extends HTMLTableRowElement {
             this.classList.add("filtered-manga");
         } else {
             this.classList.remove("filtered-manga");
-            this.firstElementChild.appendChild(this.cover);
+            this.loadCover();
         }
     }
     addTd(...content: Array<HTMLElement>) {
@@ -95,6 +96,10 @@ class MangaRow extends HTMLTableRowElement {
     setCover(filename: string) {
         this.manga.cover.set(filename);
         this.coverFetched = true;
+    }
+    loadCover() {
+        if (this.cover.isConnected) return;
+        this.firstElementChild.appendChild(this.cover);
     }
 }
 
@@ -186,6 +191,11 @@ export class ChapterTable extends HTMLTableElement {
             }
         }
     }
+    loadCovers() {
+        for (let mangaRow of this.rows) {
+            mangaRow.loadCover();
+        }
+    }
 }
 
 @initializeCustomElement("div")
@@ -237,8 +247,9 @@ export class ChapterTableContainer extends HTMLDivElement {
     }
     toggleShowFiltered() {
         if (this.filterStyle.isConnected) {
-            this.filterStyle.parentNode.removeChild(this.filterStyle);
+            this.filterStyle.remove();
             this.showFilteredButton.textContent = "Hide filtered";
+            this.table.loadCovers();
         } else {
             getStyleContainer(this).appendChild(this.filterStyle);
             this.showFilteredButton.textContent = "Show filtered";
