@@ -15,8 +15,24 @@
 (function () {
     'use strict';
 
+    function getUserOptionRequestString() {
+        let s = "";
+        let userOptionString = localStorage.getItem("md");
+        if (!userOptionString) {
+            console.log("No user options to load.");
+            return s;
+        }
+        let userOptions = JSON.parse(userOptionString);
+        for (let lang of userOptions.userPreferences.originLanguages) {
+            s += "originalLanguage[]=" + lang + "&";
+        }
+        for (let lang of userOptions.userPreferences.filteredLanguages) {
+            s += "translatedLanguage[]=" + lang + "&";
+        }
+        return s;
+    }
     async function fetchRecentChapters(offset = 0) {
-        let response = await fetch(`https://api.mangadex.org/chapter?order[publishAt]=desc&limit=100&includes[]=manga&translatedLanguage[]=en&includeFutureUpdates=0&offset=${offset}`);
+        let response = await fetch(`https://api.mangadex.org/chapter?order[publishAt]=desc&limit=100&includes[]=manga&${getUserOptionRequestString()}includeFutureUpdates=0&offset=${offset}`);
         let json = await response.json();
         let returnValue = [];
         for (let entry of json.data) {

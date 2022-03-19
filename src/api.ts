@@ -47,13 +47,30 @@ export interface ChapterList {
     data: Array<GenericObject<ChapterAttributes>>
 };
 
+function getUserOptionRequestString() {
+    let s = "";
+    let userOptionString = localStorage.getItem("md");
+    if (!userOptionString) {
+        console.log("No user options to load.");
+        return s;
+    }
+    let userOptions = JSON.parse(userOptionString);
+    for (let lang of userOptions.userPreferences.originLanguages) {
+        s += "originalLanguage[]=" + lang + "&";
+    }
+    for (let lang of userOptions.userPreferences.filteredLanguages) {
+        s += "translatedLanguage[]=" + lang + "&";
+    }
+    return s;
+}
+
 export async function fetchRecentChapters(offset: number = 0):
     Promise<Array<{
         chapter: GenericObject<ChapterAttributes>,
         manga: GenericObject<MangaAttributes>
     }>>
 {
-    let response = await fetch(`https://api.mangadex.org/chapter?order[publishAt]=desc&limit=100&includes[]=manga&translatedLanguage[]=en&includeFutureUpdates=0&offset=${offset}`);
+    let response = await fetch(`https://api.mangadex.org/chapter?order[publishAt]=desc&limit=100&includes[]=manga&${getUserOptionRequestString()}includeFutureUpdates=0&offset=${offset}`);
     let json: ChapterList = await response.json();
     let returnValue: Array<{
         chapter: GenericObject<ChapterAttributes>,
