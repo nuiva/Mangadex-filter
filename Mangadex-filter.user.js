@@ -790,7 +790,7 @@
         updateFrom(json) {
             console.assert(this.id === json.id);
             if (json.attributes) {
-                this.title.set(json.attributes.title.en || json.attributes.title.ja);
+                this.title.set(Object.values(json.attributes.title)[0]);
                 let tags = new Set();
                 for (let tag of json.attributes.tags) {
                     tags.add(tag.attributes.name.en);
