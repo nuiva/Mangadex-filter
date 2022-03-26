@@ -204,11 +204,10 @@ export class ChapterTableContainer extends HTMLDivElement {
     showFilteredButton: HTMLButtonElement
     filterStyle: HTMLStyleElement
     fetchNewHandler: number
-    fetchMorePromise: Promise<any>
+    fetchMorePromise: Promise<any> = new Promise(f => f(null))
     constructor() {
         super();
         this.table = new ChapterTable();
-        this.fetchMorePromise = this.table.fetchMoreUntilFullTable();
         // Fetch new
         /*let addNewButton = document.createElement("button");
         addNewButton.textContent = "Fetch new";
@@ -239,11 +238,17 @@ export class ChapterTableContainer extends HTMLDivElement {
             new ImageTooltip("hover-tooltip")
         );
     }
+    fillTable = () => {
+        this.fetchMorePromise = this.fetchMorePromise.then(() => this.table.fetchMoreUntilFullTable());
+    }
     connectedCallback() {
         this.fetchNewHandler = setInterval(() => this.table.fetchNew(), 60 * 1000);
+        this.fillTable();
+        window.addEventListener("resize", this.fillTable);
     }
     disconnectedCallback() {
         clearInterval(this.fetchNewHandler);
+        window.removeEventListener("resize", this.fillTable);
     }
     toggleShowFiltered() {
         if (this.filterStyle.isConnected) {

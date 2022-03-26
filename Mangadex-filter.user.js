@@ -1092,8 +1092,11 @@
     let ChapterTableContainer = class ChapterTableContainer extends HTMLDivElement {
         constructor() {
             super();
+            this.fetchMorePromise = new Promise(f => f(null));
+            this.fillTable = () => {
+                this.fetchMorePromise = this.fetchMorePromise.then(() => this.table.fetchMoreUntilFullTable());
+            };
             this.table = new ChapterTable();
-            this.fetchMorePromise = this.table.fetchMoreUntilFullTable();
             // Fetch new
             /*let addNewButton = document.createElement("button");
             addNewButton.textContent = "Fetch new";
@@ -1122,9 +1125,12 @@
         }
         connectedCallback() {
             this.fetchNewHandler = setInterval(() => this.table.fetchNew(), 60 * 1000);
+            this.fillTable();
+            window.addEventListener("resize", this.fillTable);
         }
         disconnectedCallback() {
             clearInterval(this.fetchNewHandler);
+            window.removeEventListener("resize", this.fillTable);
         }
         toggleShowFiltered() {
             if (this.filterStyle.isConnected) {
