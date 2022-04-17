@@ -1,4 +1,4 @@
-import { Dashboard } from "./dashboard";
+import { dashboard } from "./dashboard";
 import { addStyle } from "./style";
 import { initializeCustomElement } from "./utils";
 
@@ -14,7 +14,7 @@ export class NavMenu extends HTMLElement {
         this.style.zIndex = "99999";
         this.style.backgroundColor = "#fff";
         if (addDashboardButton) {
-            this.emplaceButton("Dashboard", Dashboard.show);
+            this.emplaceButton("Dashboard", () => dashboard.show());
         }
         addStyle(this.shadow, `
             button {

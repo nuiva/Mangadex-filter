@@ -1058,8 +1058,8 @@
             return false;
         }
         async fetchMoreUntilFullTable() {
-            let scrollEl = document.scrollingElement;
-            while (scrollEl.offsetHeight == scrollEl.scrollHeight) {
+            let scrollEl = this.parentElement.parentElement;
+            while (scrollEl.offsetHeight && scrollEl.offsetHeight == scrollEl.scrollHeight) {
                 if (!await this.fetchMoreVisible()) {
                     return false;
                 }
@@ -1287,17 +1287,25 @@
         else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
         return c > 3 && r && Object.defineProperty(target, key, r), r;
     };
-    var Dashboard_1;
-    let dashboardCache = null;
-    let origBody = null;
-    let Dashboard = Dashboard_1 = class Dashboard extends HTMLBodyElement {
+    let Dashboard = class Dashboard extends HTMLDivElement {
         constructor() {
             super();
             this.header = document.createElement("nav");
             this.content = document.createElement("div");
             this.recentChapterTable = null;
             this.tagWeightTable = null;
+            this.hideOrigBodyStyle = createStyle(`
+        #MDFDashboard {
+            z-index: 99999;
+            position: fixed;
+            background-color: #fff;
+        }
+        body {
+            overflow-y: hidden !important;
+        }
+    `);
             this.id = "MDFDashboard";
+            this.content.id = "content";
             this.shadow = this.attachShadow({ mode: "open" });
             this.createHeader();
             this.shadow.appendChild(this.content);
@@ -1305,6 +1313,14 @@
             addStyle(this.shadow, `
             nav {
                 border-bottom: 3px solid black;
+                position: fixed;
+                width: 100vw;
+            }
+            #content {
+                overflow-y: auto;
+                width: 100vw;
+                height: calc(100vh - 27px);
+                margin-top: 27px;
             }
             .chapter-table {
                 border-collapse: collapse;
@@ -1377,18 +1393,18 @@
             this.currentView = this.content.appendChild(this.tagWeightTable);
         }
         hide() {
-            document.body = origBody;
+            this.remove();
+            this.hideOrigBodyStyle.remove();
         }
-        static show() {
-            dashboardCache ??= new Dashboard_1();
-            origBody = document.body;
-            document.body = dashboardCache;
-            return dashboardCache;
+        show() {
+            document.body.appendChild(this);
+            document.head.appendChild(this.hideOrigBodyStyle);
         }
     };
-    Dashboard = Dashboard_1 = __decorate$1([
-        initializeCustomElement("body", "mdf-dashboard")
+    Dashboard = __decorate$1([
+        initializeCustomElement("div", "mdf-dashboard")
     ], Dashboard);
+    let dashboard = new Dashboard();
 
     var __decorate = (undefined && undefined.__decorate) || function (decorators, target, key, desc) {
         var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
@@ -1406,7 +1422,7 @@
             this.style.zIndex = "99999";
             this.style.backgroundColor = "#fff";
             if (addDashboardButton) {
-                this.emplaceButton("Dashboard", Dashboard.show);
+                this.emplaceButton("Dashboard", () => dashboard.show());
             }
             addStyle(this.shadow, `
             button {
@@ -1435,10 +1451,9 @@
     ], NavMenu);
 
     async function main$3() {
-        await new Promise(f => setTimeout(f, 2000));
         let nav = new NavMenu();
         document.body.appendChild(nav);
-        let dashboard = Dashboard.show();
+        dashboard.show();
         return () => {
             dashboard.hide();
             nav.remove();

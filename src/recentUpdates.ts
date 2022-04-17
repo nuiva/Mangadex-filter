@@ -170,8 +170,8 @@ export class ChapterTable extends HTMLTableElement {
         return false;
     }
     async fetchMoreUntilFullTable() {
-        let scrollEl = document.scrollingElement as HTMLElement;
-        while (scrollEl.offsetHeight == scrollEl.scrollHeight) {
+        let scrollEl = this.parentElement.parentElement;
+        while (scrollEl.offsetHeight && scrollEl.offsetHeight == scrollEl.scrollHeight) {
             if (!await this.fetchMoreVisible()) {
                 return false;
             }

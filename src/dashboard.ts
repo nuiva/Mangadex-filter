@@ -1,22 +1,30 @@
 import { ChapterTableContainer } from "./recentUpdates";
 import { addStyle } from "./style";
 import { TagWeightTable } from "./tagWeights";
-import { initializeCustomElement } from "./utils";
+import { createStyle, initializeCustomElement } from "./utils";
 
-let dashboardCache: Dashboard = null;
-let origBody: HTMLBodyElement = null;
-
-@initializeCustomElement("body", "mdf-dashboard")
-export class Dashboard extends HTMLBodyElement {
+@initializeCustomElement("div", "mdf-dashboard")
+class Dashboard extends HTMLDivElement {
     currentView: any
     header: HTMLElement = document.createElement("nav")
     content: HTMLDivElement = document.createElement("div")
     shadow: ShadowRoot
     recentChapterTable: ChapterTableContainer = null
     tagWeightTable: TagWeightTable = null
+    private hideOrigBodyStyle = createStyle(`
+        #MDFDashboard {
+            z-index: 99999;
+            position: fixed;
+            background-color: #fff;
+        }
+        body {
+            overflow-y: hidden !important;
+        }
+    `)
     constructor() {
         super();
         this.id = "MDFDashboard";
+        this.content.id = "content";
         this.shadow = this.attachShadow({mode: "open"});
         this.createHeader();
         this.shadow.appendChild(this.content);
@@ -24,6 +32,14 @@ export class Dashboard extends HTMLBodyElement {
         addStyle(this.shadow, `
             nav {
                 border-bottom: 3px solid black;
+                position: fixed;
+                width: 100vw;
+            }
+            #content {
+                overflow-y: auto;
+                width: 100vw;
+                height: calc(100vh - 27px);
+                margin-top: 27px;
             }
             .chapter-table {
                 border-collapse: collapse;
@@ -96,12 +112,13 @@ export class Dashboard extends HTMLBodyElement {
         this.currentView = this.content.appendChild(this.tagWeightTable);
     }
     hide() {
-        document.body = origBody;
+        this.remove();
+        this.hideOrigBodyStyle.remove();
     }
-    static show() {
-        dashboardCache ??= new Dashboard();
-        origBody = document.body as HTMLBodyElement;
-        document.body = dashboardCache;
-        return dashboardCache;
+    show() {
+        document.body.appendChild(this);
+        document.head.appendChild(this.hideOrigBodyStyle);
     }
 }
+
+export let dashboard = new Dashboard();
